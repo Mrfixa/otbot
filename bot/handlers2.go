@@ -487,7 +487,7 @@ func (b *Bot) handleSMSCommand(msg *tgbotapi.Message) {
 		return
 	}
 
-	resp, err := b.plivo.SendSMS(cfg.PlivoNumber, phone, message)
+	resp, err := b.plivo.SendSMS(cfg.CallerID, phone, message)
 	if err != nil {
 		b.sendMessage(msg.Chat.ID, fmt.Sprintf("❌ Failed to send SMS: %v", err))
 		return

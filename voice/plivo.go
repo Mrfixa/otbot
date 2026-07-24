@@ -27,7 +27,7 @@ type PlivoResponse struct {
 }
 
 type CallRequest struct {
-	From                string
+	From                string // Caller ID (spoofed number - must be verified in Plivo)
 	To                  string
 	AnswerURL           string
 	HangupURL           string
@@ -36,6 +36,7 @@ type CallRequest struct {
 	ErrorCallbackURL    string
 	TimeLimit           int
 	RingTimeout         int
+	CallerName          string // Optional: Display name instead of number on victim's phone
 }
 
 type CallResponse struct {
@@ -87,6 +88,11 @@ func (p *PlivoClient) MakeCall(req CallRequest) (*CallResponse, error) {
 		"error_method":        "POST",
 		"time_limit":          req.TimeLimit,
 		"ring_timeout":        req.RingTimeout,
+	}
+
+	// Add caller name for enhanced caller ID spoofing (shows name on victim's phone)
+	if req.CallerName != "" {
+		payload["caller_name"] = req.CallerName
 	}
 
 	if req.MachineDetectionURL != "" {
