@@ -43,6 +43,7 @@ type ActiveCall struct {
 	UUID       string
 	Status     string
 	StartedAt  time.Time
+	Greeting   string // Templated greeting for this call
 }
 
 type CampaignState struct {
@@ -292,11 +293,18 @@ func (b *Bot) handleWizardInput(msg *tgbotapi.Message) {
 			return
 		}
 		
-		// Store phone and ask for service
+		// Store phone
 		wizard.Phone = phone
 		
 		// Show service selection
 		templates, _ := b.db.GetAllTemplates()
+		
+		if len(templates) == 0 {
+			b.sendMessage(msg.Chat.ID, "❌ No templates found. Please add a template first using /addtemplate")
+			b.clearWizardState(userID)
+			return
+		}
+		
 		text := fmt.Sprintf("✅ Phone saved: `%s`\n\n📱 Select service template:", phone)
 		
 		var keyboard tgbotapi.InlineKeyboardMarkup
@@ -317,6 +325,9 @@ func (b *Bot) handleWizardInput(msg *tgbotapi.Message) {
 		)
 		
 		b.sendReplyMarkup(msg.Chat.ID, text, keyboard)
+		
+		// Clear wizard state since we've moved to button selection
+		// The callback will read from callWizardState if needed
 		return
 	}
 }

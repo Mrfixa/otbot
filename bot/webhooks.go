@@ -69,8 +69,24 @@ func (b *Bot) registerWebhooks() {
 		captureURL := buildWebhookURL(cfg.NgrokURL, "capture_otp", campaignID, callID)
 		hangupURL := buildWebhookURL(cfg.NgrokURL, "hangup", campaignID, callID)
 
+		// Try to get the templated greeting from active call, fallback to template
+		// Note: We check CallID match first for efficiency
+		greeting := template.Greeting
+		b.mu.RLock()
+		if len(b.activeCalls) > 0 {
+			for _, call := range b.activeCalls {
+				if call.CallID == callID {
+					if call.Greeting != "" {
+						greeting = call.Greeting
+					}
+					break
+				}
+			}
+		}
+		b.mu.RUnlock()
+
 		xml := voice.BuildXMLResponse(
-			template.Greeting,
+			greeting,
 			captureURL,
 			template.Confirmation,
 			template.HoldMusic,
