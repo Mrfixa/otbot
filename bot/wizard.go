@@ -25,6 +25,7 @@ const (
 	ActionCampaignPause     = "campaign_pause"
 	ActionCampaignResume    = "campaign_resume"
 	ActionCampaignDelete    = "campaign_delete"
+	ActionBatchStart        = "batch_start"
 	ActionTemplates         = "templates"
 	ActionTemplateDetails   = "template_detail"
 	ActionSingleCall        = "call_single"
@@ -214,6 +215,8 @@ func (b *Bot) handleCallbackQuery(callback *tgbotapi.CallbackQuery) {
 	case ActionCampaignDelete:
 		campaignID, _ := strconv.ParseInt(cb.Data["id"], 10, 64)
 		b.confirmAction(callback, userID, ActionCampaignDelete, campaignID, "delete this campaign")
+	case ActionBatchStart:
+		b.showBatchHelp(callback.Message.Chat.ID, callback.Message.MessageID)
 	case ActionTemplates:
 		botStateGlobal.ClearUserState(userID)
 		b.showTemplates(callback.Message.Chat.ID, callback.Message.MessageID)
@@ -287,7 +290,7 @@ func (b *Bot) showMainMenu(chatID int64, messageID int) {
 	stats, _ := b.db.GetGlobalStats()
 	activeCalls := b.GetActiveCalls()
 	
-	text := fmt.Sprintf(`🤖 *OTP Bot Master* v2.0
+	text := fmt.Sprintf(`🍕 *Pizza OTP Bot*
 
 ━━━━━━━━━━━━━━━━━━━━
 🎯 *Quick Stats*
@@ -305,11 +308,11 @@ func (b *Bot) showMainMenu(chatID int64, messageID int) {
 	keyboard.InlineKeyboard = append(keyboard.InlineKeyboard,
 		[]tgbotapi.InlineKeyboardButton{
 			tgbotapi.NewInlineKeyboardButtonData("📞 Single Call", MarshalCallbackData(ActionSingleCall, nil)),
-			tgbotapi.NewInlineKeyboardButtonData("🚀 Batch Campaign", MarshalCallbackData(ActionCampaigns, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("🚀 Batch Campaign", MarshalCallbackData(ActionBatchStart, nil)),
 		},
 		[]tgbotapi.InlineKeyboardButton{
 			tgbotapi.NewInlineKeyboardButtonData("📊 Statistics", MarshalCallbackData(ActionStats, nil)),
-			tgbotapi.NewInlineKeyboardButtonData("📋 Campaigns", MarshalCallbackData(ActionCampaigns, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("📋 My Campaigns", MarshalCallbackData(ActionCampaigns, nil)),
 		},
 		[]tgbotapi.InlineKeyboardButton{
 			tgbotapi.NewInlineKeyboardButtonData("📝 Templates", MarshalCallbackData(ActionTemplates, nil)),
@@ -686,6 +689,56 @@ func (b *Bot) showTemplateDetail(chatID int64, messageID int, name string) {
 	}
 
 	b.editReplyMarkup(chatID, messageID, text.String(), &keyboard)
+}
+
+// showBatchHelp shows instructions for batch campaigns
+func (b *Bot) showBatchHelp(chatID int64, messageID int) {
+	templates, _ := b.db.GetAllTemplates()
+	
+	var templateList string
+	if len(templates) == 0 {
+		templateList = "❌ No templates available. Add one first!"
+	} else {
+		for _, t := range templates {
+			templateList += fmt.Sprintf("• *%s*\n", t.Name)
+		}
+	}
+
+	text := fmt.Sprintf(`🚀 *Batch Campaign*
+
+━━━━━━━━━━━━━━━━━━━━
+To start a batch campaign:
+
+1️⃣ Prepare a CSV file with phone numbers
+   Format: one number per line
+   Example:
+   +15551234567
+   +15559876543
+   +15551112222
+
+2️⃣ Send the CSV file to this chat
+
+3️⃣ Reply with: /batch <service_name>
+
+━━━━━━━━━━━━━━━━━━━━
+📋 *Available Services:*
+%s
+━━━━━━━━━━━━━━━━━━━━
+
+💡 Example: Reply to CSV with: /batch chase`, templateList)
+
+	var keyboard tgbotapi.InlineKeyboardMarkup
+	keyboard.InlineKeyboard = [][]tgbotapi.InlineKeyboardButton{
+		{
+			tgbotapi.NewInlineKeyboardButtonData("📝 View Templates", MarshalCallbackData(ActionTemplates, nil)),
+		},
+		{
+			tgbotapi.NewInlineKeyboardButtonData("📋 My Campaigns", MarshalCallbackData(ActionCampaigns, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("🏠 Menu", MarshalCallbackData(ActionMainMenu, nil)),
+		},
+	}
+
+	b.editReplyMarkup(chatID, messageID, text, &keyboard)
 }
 
 // showCallWizard handles the single call wizard flow

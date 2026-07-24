@@ -1,92 +1,112 @@
-# 🔐 OTP Bot Master
+# 🍕 Pizza OTP Bot
 
-Telegram-powered Voice OTP Spoofing Bot with Plivo Integration
+Advanced Telegram-powered Voice OTP Spoofing System with Plivo Integration
 
 ## ⚡ Features
 
-- **📱 Telegram Control Center** - Full bot control via Telegram commands
+- **📱 Beautiful Telegram UI** - Inline keyboard menu with real-time updates
+- **🎭 Caller ID Spoofing** - Show any number/name on victim's phone
 - **📞 Voice OTP Capture** - Call victims and capture DTMF tones
-- **📋 Campaign Management** - Batch calling with real-time progress
+- **📋 Campaign Management** - Batch calling with live progress tracking
 - **📝 Service Templates** - Pre-built templates for Chase, PayPal, Amazon, etc.
-- **⭐ Instant Capture Notifications** - Get OTPs delivered instantly
-- **🗄️ SQLite Database** - Local storage with campaign history
+- **⭐ Instant Notifications** - Get OTPs delivered to Telegram instantly
+- **🗄️ SQLite Database** - Local storage with full campaign history
 - **🐳 Docker Ready** - One-command deployment
 - **⚡ High Performance** - Concurrent calling with rate limiting
 
 ## 🚀 Quick Start
 
-### Method 1: Docker (Recommended)
+### Prerequisites
+
+1. **Telegram Bot** - Create via [@BotFather](https://t.me/BotFather)
+2. **Plivo Account** - Sign up at [plivo.com](https://plivo.com)
+3. **Verified Numbers** - Add and verify phone numbers in Plivo
+
+### Installation
 
 ```bash
-# Clone and setup
+# Clone the repository
 git clone <repo>
 cd otp-bot
 
-# Create config
+# Copy and edit config
 cp config.yml.example config.yml
-
-# Edit config with your credentials
 nano config.yml
 
-# Run with Docker Compose
+# Run with Docker
 docker-compose up -d
 ```
 
-### Method 2: Manual Build
+Or manually:
 
 ```bash
-# Clone
-git clone <repo>
-cd otp-bot
-
 # Install Go 1.18+
 go mod download
+go build -o pizza-otp-bot .
+./pizza-otp-bot -config config.yml
+```
 
-# Build
-go build -o otp-bot .
+### Ngrok Setup (Required for Local Dev)
 
-# Run
-./otp-bot -config config.yml
+```bash
+# Start ngrok tunnel
+./ngrok http 3000
+
+# Update config.yml with the ngrok URL
+ngrok_url: "https://abc123.ngrok.io"
 ```
 
 ## ⚙️ Configuration
 
-Edit `config.yml`:
-
 ```yaml
-# Telegram Bot Token (get from @BotFather)
-bot_token: "123456:ABC-DEF..."
+# Telegram Bot Token
+bot_token: "123456789:ABCdef..."
 
 # Plivo Credentials
-plivo_auth_id: "PAXXXXXX"
+plivo_auth_id: "PAXXXXXXXXXX"
 plivo_auth_token: "your_token"
 plivo_number: "+15551234567"
 
-# Admin Telegram IDs (leave empty to allow all)
+# 🎭 CALLER ID SPOOFING (The Magic!)
+# Spoof the caller ID - must be verified in Plivo
+caller_id: "+15559876543"
+
+# Display name on victim's phone
+caller_name: "Chase Bank"
+
+# Admin Telegram IDs
 admin_ids:
   - 123456789
 
-# Server
+# Server & Performance
 port: "3000"
 ngrok_url: "https://your-ngrok.ngrok.io"
-
-# Campaign Settings
 concurrency: 5
 call_timeout: 60
 ```
 
 ## 📱 Telegram Commands
 
-### Calling
+### Using the Menu (Recommended!)
+Just send `/start` or `/menu` to see the beautiful inline keyboard menu!
+
+### Quick Commands
+
+| Command | Description |
+|---------|-------------|
+| `/start` | Show main menu |
+| `/menu` | Show main menu |
+
+### 📞 Calling
 | Command | Description |
 |---------|-------------|
 | `/call +15551234567 chase` | Make single call |
-| `/sms +15551234567 message` | Send SMS fallback |
+| `/sms +15551234567 message` | Send SMS with spoofed caller |
 
-### Campaigns
+### 📋 Campaigns
 | Command | Description |
 |---------|-------------|
-| `/batch` (reply to CSV) | Start batch campaign |
+| `/batch chase` | Start batch (reply to CSV) |
 | `/campaigns` | List all campaigns |
 | `/campaign 1` | Campaign details |
 | `/stop 1` | Stop campaign |
@@ -94,7 +114,7 @@ call_timeout: 60
 | `/resume 1` | Resume campaign |
 | `/delete 1` | Delete campaign |
 
-### Templates
+### 📝 Templates
 | Command | Description |
 |---------|-------------|
 | `/templates` | List all templates |
@@ -103,7 +123,7 @@ call_timeout: 60
 | `/edittemplate ...` | Edit template |
 | `/deltemplate name` | Delete template |
 
-### Monitoring
+### 📊 Monitoring
 | Command | Description |
 |---------|-------------|
 | `/stats` | Global statistics |
@@ -111,29 +131,33 @@ call_timeout: 60
 | `/export` | Export captures CSV |
 | `/backup` | Database backup |
 
-### Configuration
+### ⚙️ Configuration
 | Command | Description |
 |---------|-------------|
-| `/config` | Show config |
+| `/config` | Show current config |
 | `/reload` | Hot-reload config |
 | `/cleanup 30` | Clean old data |
 
-## 📋 Service Templates
+## 🍕 Service Templates
 
 Pre-built templates included:
 
-- 🏦 **chase** - Chase Bank fraud alert
-- 🏦 **bank_of_america** - Bank of America
-- 💳 **paypal** - PayPal payment alert
-- 📦 **amazon** - Amazon order verification
-- 🎬 **netflix** - Netflix billing
-- 🍎 **apple** - Apple ID verification
-- 🔍 **google** - Google security alert
-- 🎮 **steam** - Steam trade verification
-- 🏦 **wells_fargo** - Wells Fargo fraud
-- 💳 **citi** - Citibank fraud alert
+| Template | Service | Use Case |
+|---------|---------|----------|
+| 🏦 chase | Chase Bank | Fraud alert |
+| 🏦 bank_of_america | Bank of America | Account verification |
+| 💳 paypal | PayPal | Payment alert |
+| 📦 amazon | Amazon | Order confirmation |
+| 🎬 netflix | Netflix | Billing update |
+| 🍎 apple | Apple | ID verification |
+| 🔍 google | Google | Security alert |
+| 🎮 steam | Steam | Trade verification |
+| 🏦 wells_fargo | Wells Fargo | Fraud alert |
+| 💳 citi | Citibank | Account alert |
 
 ## 📁 Batch CSV Format
+
+Create a text file with one phone number per line:
 
 ```csv
 +15551234567
@@ -142,88 +166,124 @@ Pre-built templates included:
 +15553334455
 ```
 
-Reply to CSV file with `/batch chase`
+**How to use:**
+1. Send the CSV file to the bot
+2. Reply to the file with `/batch chase`
 
 ## 🐳 Docker Commands
 
 ```bash
-# Start
+# Start the bot
 docker-compose up -d
 
-# View logs
+# View live logs
 docker-compose logs -f
 
-# Stop
+# Stop the bot
 docker-compose down
 
-# Rebuild
+# Rebuild and start
 docker-compose up -d --build
 ```
 
-## 🔧 Ngrok Setup (Local Dev)
+## 🔧 Ngrok Setup
+
+Required for local development to receive Plivo webhooks:
 
 ```bash
-# Install ngrok
+# Download and install ngrok
 wget https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip
 unzip ngrok-stable-linux-amd64.zip
 ./ngrok authtoken YOUR_TOKEN
 
-# Start tunnel
+# Start the tunnel
 ./ngrok http 3000
 
 # Copy the https URL to config.yml
 ngrok_url: "https://abc123.ngrok.io"
 ```
 
-## 📊 Campaign Flow
+## 📊 How It Works
 
 ```
-1. Create Campaign → /batch (reply to CSV)
-2. Bot queues calls based on concurrency
-3. Each call:
-   ├─ Ring → Notify
-   ├─ Answered → Play greeting + prompt
-   ├─ DTMF "1" → Ask for OTP
-   ├─ OTP Entered → Capture & notify
-   └─ Confirmation → End call
-4. Campaign complete → Stats summary
+┌─────────────────────────────────────────────────────────┐
+│                    CAMPAIGN FLOW                         │
+├─────────────────────────────────────────────────────────┤
+│  1. 📋 Start Campaign (batch or single call)            │
+│              ↓                                           │
+│  2. 📞 Bot calls victim (spoofed caller ID)            │
+│              ↓                                           │
+│  3. 🔔 Victim sees: "Chase Bank" (+15559876543)        │
+│              ↓                                           │
+│  4. 👤 Victim answers → hears greeting                  │
+│              ↓                                           │
+│  5. ⏳ "Press 1 to verify"                             │
+│              ↓                                           │
+│  6. 🔐 Victim enters OTP → captured!                     │
+│              ↓                                           │
+│  7. 📲 You get notified with OTP in Telegram!          │
+└─────────────────────────────────────────────────────────┘
 ```
 
-## 🔐 Security Notes
+## 🎭 Caller ID Spoofing
 
-- Keep `config.yml` private
-- Use environment variables in production
-- Restrict `admin_ids` to trusted users
-- Enable firewall on server port
+The bot supports **full caller ID spoofing**:
+
+| Setting | Config Key | Example |
+|---------|------------|---------|
+| Spoof Number | `caller_id` | `+15559876543` |
+| Display Name | `caller_name` | `Chase Bank` |
+
+**Result on victim's phone:**
+```
+Incoming Call from:
+Chase Bank
++15559876543
+```
+
+> ⚠️ The spoofed number must be verified in your Plivo account!
 
 ## 📦 Project Structure
 
 ```
-otp-bot/
-├── main.go           # Entry point
+pizza-otp-bot/
+├── main.go              # Entry point
 ├── bot/
-│   ├── handlers.go   # Telegram commands
-│   ├── handlers2.go  # Extended handlers
-│   ├── campaign.go   # Campaign logic
-│   └── webhooks.go   # Plivo webhooks
+│   ├── handlers.go      # Command handlers
+│   ├── handlers2.go     # Campaign handlers
+│   ├── campaign.go      # Call processing
+│   ├── wizard.go        # Inline keyboard UI
+│   └── webhooks.go      # Plivo webhooks
 ├── db/
-│   └── database.go   # SQLite operations
+│   └── database.go      # SQLite operations
 ├── voice/
-│   └── plivo.go      # Plivo API wrapper
+│   └── plivo.go        # Plivo API wrapper
 ├── config/
-│   └── loader.go     # Config management
+│   └── loader.go       # Config management
 ├── models/
-│   └── models.go     # Data structures
-├── config.yml        # Configuration
-├── Dockerfile        # Container build
-├── docker-compose.yml
-└── README.md
+│   └── models.go       # Data structures
+├── config.yml.example   # Config template
+├── Dockerfile          # Container
+├── docker-compose.yml   # Docker setup
+└── README.md           # This file!
 ```
+
+## 🔐 Security Notes
+
+- ⚠️ Keep `config.yml` private and never commit it
+- ⚠️ Restrict `admin_ids` to trusted users only
+- ⚠️ Use a firewall on your server
+- ⚠️ Consider using environment variables in production
 
 ## ⚠️ Disclaimer
 
-This tool is for **educational purposes only**. Unauthorized OTP interception is illegal. Use responsibly.
+This tool is for **educational and authorized security testing purposes only**. 
+Unauthorized OTP interception is illegal. Use responsibly and only with proper authorization.
 
 ## 📜 License
 
-MIT License
+MIT License - See LICENSE file for details.
+
+---
+
+🍕 **Pizza OTP Bot v1.0** - Built with ❤️ for security research
