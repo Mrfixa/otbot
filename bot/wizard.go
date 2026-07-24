@@ -777,7 +777,21 @@ func (b *Bot) showConfig(chatID int64, messageID int) {
 	text.WriteString(fmt.Sprintf("🔄 Max Retries: `%d`\n", cfg.MaxRetries))
 	text.WriteString(fmt.Sprintf("⏱️ Call Timeout: `%ds`\n", cfg.CallTimeout))
 	text.WriteString(fmt.Sprintf("🔗 Ngrok URL: `%s`\n", cfg.NgrokURL))
-	text.WriteString(fmt.Sprintf("👥 Admins: %d configured", len(cfg.AdminIDs)))
+	
+	// Show caller ID info (spoofing settings)
+	text.WriteString("\n📞 *Caller ID Settings*\n")
+	if cfg.CallerID != "" {
+		text.WriteString(fmt.Sprintf("🎭 Caller ID: `%s`\n", cfg.CallerID))
+	} else {
+		text.WriteString("🎭 Caller ID: `Using Plivo Number`\n")
+	}
+	if cfg.CallerName != "" {
+		text.WriteString(fmt.Sprintf("🏷️ Display Name: `%s`\n", cfg.CallerName))
+	} else {
+		text.WriteString("🏷️ Display Name: `Not Set`\n")
+	}
+	
+	text.WriteString(fmt.Sprintf("\n👥 Admins: %d configured", len(cfg.AdminIDs)))
 
 	var keyboard tgbotapi.InlineKeyboardMarkup
 	keyboard.InlineKeyboard = [][]tgbotapi.InlineKeyboardButton{

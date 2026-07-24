@@ -70,12 +70,17 @@ func (b *Bot) registerWebhooks() {
 		hangupURL := buildWebhookURL(cfg.NgrokURL, "hangup", campaignID, callID)
 
 		// Try to get the templated greeting from active call, fallback to template
+		// Note: We check CallID match first for efficiency
 		greeting := template.Greeting
 		b.mu.RLock()
-		for _, call := range b.activeCalls {
-			if call.CallID == callID && call.Greeting != "" {
-				greeting = call.Greeting
-				break
+		if len(b.activeCalls) > 0 {
+			for _, call := range b.activeCalls {
+				if call.CallID == callID {
+					if call.Greeting != "" {
+						greeting = call.Greeting
+					}
+					break
+				}
 			}
 		}
 		b.mu.RUnlock()
