@@ -43,6 +43,7 @@ type ActiveCall struct {
 	UUID       string
 	Status     string
 	StartedAt  time.Time
+	Greeting   string // Templated greeting for this call
 }
 
 type CampaignState struct {

