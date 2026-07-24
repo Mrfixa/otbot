@@ -636,6 +636,21 @@ func getStatusEmoji(status string) string {
 	}
 }
 
+func getStatusText(status string) string {
+	switch status {
+	case "active":
+		return "🚀 Campaign Running"
+	case "paused":
+		return "⏸️ Campaign Paused"
+	case "completed":
+		return "✅ Campaign Completed"
+	case "cancelled":
+		return "🛑 Campaign Stopped"
+	default:
+		return "⚪ Unknown Status"
+	}
+}
+
 func createProgressBar(percent int) string {
 	filled := (percent * 20) / 100
 	empty := 20 - filled
