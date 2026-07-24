@@ -498,18 +498,13 @@ func (b *Bot) handleSMSCommand(msg *tgbotapi.Message) {
 }
 
 func (b *Bot) reloadConfig(msg *tgbotapi.Message) {
-
-	cfg, err := config.Get()
-	if err != nil {
-		b.sendMessage(msg.Chat.ID, "❌ Failed to get current configuration")
-		return
-	}
-
-	loader, err := config.Load(cfg.DatabasePath)
+	// Use the same config file path that was used initially
+	loader, err := config.Load("config.yml")
 	if err != nil {
 		b.sendMessage(msg.Chat.ID, fmt.Sprintf("❌ Failed to load config: %v", err))
 		return
 	}
+	
 	if err := loader.Reload(); err != nil {
 		b.sendMessage(msg.Chat.ID, fmt.Sprintf("❌ Failed to reload config: %v", err))
 		return
@@ -543,8 +538,8 @@ func (b *Bot) sendConfig(msg *tgbotapi.Message) {
 }
 
 func (b *Bot) sendBackup(msg *tgbotapi.Message) {
-
-	csv, err := b.db.ExportCaptures()
+	// Use masked export for security - phone numbers are partially hidden
+	csv, err := b.db.ExportCapturesMasked()
 	if err != nil {
 		b.sendMessage(msg.Chat.ID, fmt.Sprintf("❌ Failed to export: %v", err))
 		return
@@ -554,7 +549,7 @@ func (b *Bot) sendBackup(msg *tgbotapi.Message) {
 		Name:  fmt.Sprintf("captures_%s.csv", time.Now().Format("2006-01-02")),
 		Bytes: []byte(csv),
 	})
-	doc.Caption = "📦 Captures Export"
+	doc.Caption = "📦 Captures Export (Phone numbers masked for security)"
 	b.telegram.Send(doc)
 
 	b.db.CreateLog("INFO", "Database backup exported", "")
@@ -563,11 +558,18 @@ func (b *Bot) sendBackup(msg *tgbotapi.Message) {
 func (b *Bot) cleanupData(msg *tgbotapi.Message, days int) {
 	b.sendMessage(msg.Chat.ID, fmt.Sprintf("🧹 Cleaning up data older than %d days...", days))
 	b.db.CreateLog("INFO", fmt.Sprintf("Data cleanup requested for %d days", days), "")
-	b.sendMessage(msg.Chat.ID, "✅ Cleanup complete")
+	
+	deletedCaptures, err := b.db.CleanupOldCaptures(days)
+	if err != nil {
+		b.sendMessage(msg.Chat.ID, fmt.Sprintf("⚠️ Cleanup partially failed: %v", err))
+	} else {
+		b.sendMessage(msg.Chat.ID, fmt.Sprintf("✅ Cleanup complete: removed %d old capture(s)", deletedCaptures))
+	}
 }
 
 func (b *Bot) exportCaptures(msg *tgbotapi.Message) {
-	csv, err := b.db.ExportCaptures()
+	// Use masked export for security - phone numbers are partially hidden
+	csv, err := b.db.ExportCapturesMasked()
 	if err != nil {
 		b.sendMessage(msg.Chat.ID, fmt.Sprintf("❌ Failed to export: %v", err))
 		return
@@ -577,7 +579,7 @@ func (b *Bot) exportCaptures(msg *tgbotapi.Message) {
 		Name:  fmt.Sprintf("otp_captures_%s.csv", time.Now().Format("2006-01-02_15-04")),
 		Bytes: []byte(csv),
 	})
-	doc.Caption = "📊 OTP Captures Export"
+	doc.Caption = "📊 OTP Captures Export (Phone numbers masked for security)"
 	b.telegram.Send(doc)
 }
 
