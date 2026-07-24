@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # Build the binary with CGO enabled for sqlite
-RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o otp-bot .
+RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o pizza-otp-bot .
 
 # Runtime Stage
 FROM alpine:3.19
@@ -28,7 +28,7 @@ RUN apk add --no-cache ca-certificates sqlite-libs
 RUN adduser -D -g '' appuser
 
 # Copy binary from builder
-COPY --from=builder /app/otp-bot .
+COPY --from=builder /app/pizza-otp-bot .
 
 # Copy config if exists
 COPY config.yml.example /app/config.yml
@@ -47,4 +47,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 
 # Run the bot
-CMD ["./otp-bot", "-config", "/app/config.yml"]
+CMD ["./pizza-otp-bot", "-config", "/app/config.yml"]

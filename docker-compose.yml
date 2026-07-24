@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: otp-bot
+    container_name: pizza-otp-bot
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -14,8 +14,12 @@ services:
       - PLIVO_AUTH_ID=${PLIVO_AUTH_ID}
       - PLIVO_AUTH_TOKEN=${PLIVO_AUTH_TOKEN}
       - PLIVO_NUMBER=${PLIVO_NUMBER}
+      - CALLER_ID=${CALLER_ID:-}
+      - CALLER_NAME=${CALLER_NAME:-}
       - ADMIN_IDS=${ADMIN_IDS}
       - NGROK_URL=${NGROK_URL}
+      - CONCURRENCY=${CONCURRENCY:-5}
+      - CALL_TIMEOUT=${CALL_TIMEOUT:-60}
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -36,7 +40,7 @@ services:
       - "4040:4040"
     environment:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
-      - NGROK_ADDR=otp-bot:3000
+      - NGROK_ADDR=pizza-otp-bot:3000
     depends_on:
       - otp-bot
     profiles:
