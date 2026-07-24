@@ -112,12 +112,16 @@ type CampaignStats struct {
 
 
 type GlobalStats struct {
-	TotalCampaigns   int     `json:"total_campaigns"`    
-	ActiveCampaigns int     `json:"active_campaigns"`   
-	TotalCalls      int64   `json:"total_calls"`         
-	AnsweredCalls   int64   `json:"answered_calls"`      
-	TotalCaptures   int64   `json:"total_captures"`     
-	SuccessRate     float64 `json:"success_rate"`       
-	TodayCalls      int64   `json:"today_calls"`        
-	TodayCaptures   int64   `json:"today_captures"`     
+	TotalCampaigns    int     `json:"total_campaigns"`    
+	ActiveCampaigns  int     `json:"active_campaigns"`   
+	PausedCampaigns  int     `json:"paused_campaigns"`  
+	CompletedCampaigns int   `json:"completed_campaigns"`  
+	TotalCalls       int64   `json:"total_calls"`         
+	AnsweredCalls    int64   `json:"answered_calls"`      
+	Voicemails       int64   `json:"voicemails"`      
+	FailedCalls      int64   `json:"failed_calls"`      
+	TotalCaptures    int64   `json:"total_captures"`     
+	SuccessRate      float64 `json:"success_rate"`       
+	TodayCalls       int64   `json:"today_calls"`        
+	TodayCaptures    int64   `json:"today_captures"`     
 }

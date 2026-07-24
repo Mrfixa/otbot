@@ -704,32 +704,34 @@ func (d *Database) GetGlobalStats() (*models.GlobalStats, error) {
 
 	stats := &models.GlobalStats{}
 
-	scanCount := func(query string, args ...interface{}) (int64, error) {
+	scanCountSilentLocal := func(query string, args ...interface{}) int64 {
 		var count int64
 		err := d.db.QueryRow(query, args...).Scan(&count)
-		return count, err
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return 0
+		}
+		return count
 	}
 
-	if _, err := scanCount("SELECT COUNT(*) FROM campaigns"); err != nil {
-		return nil, fmt.Errorf("failed to count campaigns: %w", err)
-	}
-	stats.TotalCampaigns = int(scanCountSilent(d.db, "SELECT COUNT(*) FROM campaigns"))
+	stats.TotalCampaigns = int(scanCountSilentLocal("SELECT COUNT(*) FROM campaigns"))
+	stats.ActiveCampaigns = int(scanCountSilentLocal("SELECT COUNT(*) FROM campaigns WHERE status = 'active'"))
+	stats.PausedCampaigns = int(scanCountSilentLocal("SELECT COUNT(*) FROM campaigns WHERE status = 'paused'"))
+	stats.CompletedCampaigns = int(scanCountSilentLocal("SELECT COUNT(*) FROM campaigns WHERE status = 'completed'"))
 
-	stats.ActiveCampaigns = int(scanCountSilent(d.db, "SELECT COUNT(*) FROM campaigns WHERE status = 'active'"))
+	stats.TotalCalls = scanCountSilentLocal("SELECT COUNT(*) FROM calls")
+	stats.AnsweredCalls = scanCountSilentLocal("SELECT COUNT(*) FROM calls WHERE status = 'answered'")
+	stats.Voicemails = scanCountSilentLocal("SELECT COUNT(*) FROM calls WHERE status = 'voicemail'")
+	stats.FailedCalls = scanCountSilentLocal("SELECT COUNT(*) FROM calls WHERE status IN ('failed', 'no_answer', 'cancelled')")
 
-	stats.TotalCalls = scanCountSilent(d.db, "SELECT COUNT(*) FROM calls")
-
-	stats.AnsweredCalls = scanCountSilent(d.db, "SELECT COUNT(*) FROM calls WHERE status = 'answered'")
-
-	stats.TotalCaptures = scanCountSilent(d.db, "SELECT COUNT(*) FROM captures")
+	stats.TotalCaptures = scanCountSilentLocal("SELECT COUNT(*) FROM captures")
 
 	if stats.AnsweredCalls > 0 {
 		stats.SuccessRate = float64(stats.TotalCaptures) / float64(stats.AnsweredCalls) * 100
 	}
 
 	today := time.Now().Format("2006-01-02")
-	stats.TodayCalls = scanCountSilent(d.db, "SELECT COUNT(*) FROM calls WHERE date(started_at) = ?", today)
-	stats.TodayCaptures = scanCountSilent(d.db, "SELECT COUNT(*) FROM captures WHERE date(captured_at) = ?", today)
+	stats.TodayCalls = scanCountSilentLocal("SELECT COUNT(*) FROM calls WHERE date(started_at) = ?", today)
+	stats.TodayCaptures = scanCountSilentLocal("SELECT COUNT(*) FROM captures WHERE date(captured_at) = ?", today)
 
 	return stats, nil
 }
@@ -788,4 +790,66 @@ func (d *Database) ExportCaptures() (string, error) {
 		csv += fmt.Sprintf("%d,%d,%d,%s,%s,%s,%s\n", c.ID, c.CallID, c.CampaignID, c.Phone, c.OTP, c.Service, c.CapturedAt.Format(time.RFC3339))
 	}
 	return csv, nil
+}
+
+// CleanupOldCaptures deletes captures older than the specified number of days
+func (d *Database) CleanupOldCaptures(days int) (int64, error) {
+	if err := d.isInitialized(); err != nil {
+		return 0, err
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	cutoff := time.Now().AddDate(0, 0, -days)
+	result, err := d.db.Exec("DELETE FROM captures WHERE captured_at < ?", cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("failed to cleanup captures: %w", err)
+	}
+	
+	deleted, _ := result.RowsAffected()
+	return deleted, nil
+}
+
+// CleanupOldLogs deletes logs older than the specified number of days
+func (d *Database) CleanupOldLogs(days int) (int64, error) {
+	if err := d.isInitialized(); err != nil {
+		return 0, err
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	cutoff := time.Now().AddDate(0, 0, -days)
+	result, err := d.db.Exec("DELETE FROM logs WHERE created_at < ?", cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("failed to cleanup logs: %w", err)
+	}
+	
+	deleted, _ := result.RowsAffected()
+	return deleted, nil
+}
+
+// ExportCapturesMasked exports captures with masked phone numbers for secure sharing
+func (d *Database) ExportCapturesMasked() (string, error) {
+	if err := d.isInitialized(); err != nil {
+		return "", err
+	}
+	captures, err := d.GetAllCaptures()
+	if err != nil {
+		return "", fmt.Errorf("failed to get captures: %w", err)
+	}
+
+	csv := "ID,Call ID,Campaign ID,Masked Phone,OTP,Service,Captured At\n"
+	for _, c := range captures {
+		maskedPhone := maskPhoneExport(c.Phone)
+		csv += fmt.Sprintf("%d,%d,%d,%s,%s,%s,%s\n", c.ID, c.CallID, c.CampaignID, maskedPhone, c.OTP, c.Service, c.CapturedAt.Format(time.RFC3339))
+	}
+	return csv, nil
+}
+
+// maskPhoneExport masks phone numbers for export (shows first 4 and last 2 digits)
+func maskPhoneExport(phone string) string {
+	if len(phone) <= 6 {
+		return strings.Repeat("*", len(phone))
+	}
+	return phone[:4] + strings.Repeat("*", len(phone)-6) + phone[len(phone)-2:]
 }
