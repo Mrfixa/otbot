@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -316,9 +317,16 @@ func (b *Bot) handleBatchCommand(msg *tgbotapi.Message) {
 					state.mu.Unlock()
 				}
 
+				// Create call record first to get valid CallID
+				callID, err := b.db.CreateCall(campaignID, phone)
+				if err != nil {
+					log.Printf("Failed to create call for %s: %v", phone, err)
+					continue
+				}
+
 				b.callQueue <- CallJob{
 					CampaignID: campaignID,
-					CallID:     0,
+					CallID:     callID,
 					Phone:      phone,
 				}
 
