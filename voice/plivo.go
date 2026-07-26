@@ -36,7 +36,9 @@ type CallRequest struct {
 	ErrorCallbackURL    string
 	TimeLimit           int
 	RingTimeout         int
-	CallerName          string // Optional: Display name instead of number on victim's phone
+	CallerName          string // Display name instead of number on victim's phone
+	CNAMLookup          bool   // Enable CNAM lookup for caller ID
+	STIRVerification   string // STIR/Shaken attestation level: "pass", "fail", "no_attestation", "disabled"
 }
 
 type CallResponse struct {
@@ -76,28 +78,41 @@ func (p *PlivoClient) MakeCall(req CallRequest) (*CallResponse, error) {
 	url := fmt.Sprintf("%s%s/Call/", p.BaseURL, p.AuthID)
 
 	payload := map[string]interface{}{
-		"from":                req.From,
-		"to":                  req.To,
-		"answer_url":          req.AnswerURL,
-		"answer_method":       "POST",
-		"hangup_url":          req.HangupURL,
-		"hangup_method":       "POST",
-		"ring_url":            req.RingURL,
-		"ring_method":         "POST",
-		"error_call_back_url": req.ErrorCallbackURL,
+		"from":                 req.From,
+		"to":                   req.To,
+		"answer_url":           req.AnswerURL,
+		"answer_method":        "POST",
+		"hangup_url":           req.HangupURL,
+		"hangup_method":        "POST",
+		"ring_url":             req.RingURL,
+		"ring_method":          "POST",
+		"error_call_back_url":  req.ErrorCallbackURL,
 		"error_method":        "POST",
-		"time_limit":          req.TimeLimit,
-		"ring_timeout":        req.RingTimeout,
+		"time_limit":           req.TimeLimit,
+		"ring_timeout":         req.RingTimeout,
 	}
 
-	// Add caller name for enhanced caller ID spoofing (shows name on victim's phone)
+	// Caller ID Spoofing - Show name instead of/in addition to number on victim's phone
 	if req.CallerName != "" {
 		payload["caller_name"] = req.CallerName
 	}
 
+	// CNAM Lookup - Shows caller name from carrier database
+	if req.CNAMLookup {
+		payload["cnam_lookup"] = "true"
+	}
+
+	// STIR/Shaken Verification - Attestation level for caller ID verification
+	// "pass" = verified caller, "no_attestation" = unverified, "disabled" = don't check
+	if req.STIRVerification != "" {
+		payload["stir_verification"] = req.STIRVerification
+	}
+
+	// Machine Detection - Detect answering machines/voicemail
 	if req.MachineDetectionURL != "" {
 		payload["machine_detection_url"] = req.MachineDetectionURL
 		payload["machine_detection_method"] = "POST"
+		payload["machine_detection"] = "true"
 	}
 
 	jsonData, err := json.Marshal(payload)

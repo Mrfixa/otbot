@@ -81,9 +81,23 @@ type Template struct {
 	Confirmation string `json:"confirmation" db:"confirmation"`
 	FallbackMessage string `json:"fallback_message" db:"fallback_message"`
 	HoldMusic  string    `json:"hold_music" db:"hold_music"`
+	Category   string    `json:"category" db:"category"`   // Category for organization
+	Icon       string    `json:"icon" db:"icon"`           // Emoji icon for display
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
+
+// Template categories for organization
+type TemplateCategory string
+
+const (
+	CategoryBanking    TemplateCategory = "banking"
+	CategoryTech      TemplateCategory = "tech"
+	CategoryEcommerce TemplateCategory = "ecommerce"
+	CategorySocial    TemplateCategory = "social"
+	CategoryGovernment TemplateCategory = "government"
+	CategoryOther     TemplateCategory = "other"
+)
 
 
 type LogEntry struct {
