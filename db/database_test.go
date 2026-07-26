@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -63,6 +64,75 @@ func TestIsInitialized(t *testing.T) {
 			}
 			if !tt.expectError && err != nil {
 				t.Errorf("Expected no error, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestErrDatabaseNotInitialized(t *testing.T) {
+	// Test that the error variable is properly defined
+	if ErrDatabaseNotInitialized == nil {
+		t.Error("ErrDatabaseNotInitialized should not be nil")
+	}
+
+	expectedMsg := "database has not been initialized"
+	if ErrDatabaseNotInitialized.Error() != expectedMsg {
+		t.Errorf("Expected error message '%s', got '%s'", expectedMsg, ErrDatabaseNotInitialized.Error())
+	}
+
+	// Test that it's detectable via errors.Is
+	if !errors.Is(ErrDatabaseNotInitialized, ErrDatabaseNotInitialized) {
+		t.Error("errors.Is should return true for the same error")
+	}
+}
+
+func TestErrRecordNotFound(t *testing.T) {
+	// Test that the error variable is properly defined
+	if ErrRecordNotFound == nil {
+		t.Error("ErrRecordNotFound should not be nil")
+	}
+
+	expectedMsg := "record not found"
+	if ErrRecordNotFound.Error() != expectedMsg {
+		t.Errorf("Expected error message '%s', got '%s'", expectedMsg, ErrRecordNotFound.Error())
+	}
+
+	// Test that it's detectable via errors.Is
+	if !errors.Is(ErrRecordNotFound, ErrRecordNotFound) {
+		t.Error("errors.Is should return true for the same error")
+	}
+}
+
+func TestDatabaseStruct(t *testing.T) {
+	db := &Database{}
+
+	// Verify initial state
+	if db.db != nil {
+		t.Error("Expected db.db to be nil initially")
+	}
+}
+
+func TestMaskPhoneExportEdgeCases(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		// Edge cases - maskPhoneExport shows first 4 and last 2 digits
+		{"+1", "**"},           // Short (no plus handling)
+		{"+12", "***"},         // Short (no plus handling)
+		{"123", "***"},         // Exactly 3 chars (all masked)
+		{"12345", "*****"},     // Exactly 5 chars (all masked since <=6)
+		{"1234567", "1234*67"}, // 7 chars (first 4 + masked + last 2)
+		
+		// Long numbers
+		{"+12345678901234567890", "+123***************90"}, // Long with plus prefix
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := maskPhoneExport(tt.input)
+			if result != tt.expected {
+				t.Errorf("maskPhoneExport(%s) = %s, expected %s", tt.input, result, tt.expected)
 			}
 		})
 	}
