@@ -32,7 +32,7 @@ type Bot struct {
 	mu              sync.RWMutex
 	stopChan        chan struct{}
 	stopOnce        sync.Once
-	updateChan      tgbotapi.UpdatesChannel
+	updateChan      chan tgbotapi.Update
 	callWizardState map[int64]*CallWizardState
 }
 
@@ -97,9 +97,8 @@ func NewBot(cfg *config.Config) (*Bot, error) {
 		return nil, fmt.Errorf("failed to initialize Telegram bot: %w", err)
 	}
 
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-	b.updateChan = b.telegram.GetUpdatesChan(u)
+	// Create buffered channel for updates
+	b.updateChan = make(chan tgbotapi.Update, 100)
 
 	b.callQueue = make(chan CallJob, 1000)
 	go b.processCallQueue()
@@ -113,11 +112,45 @@ func (b *Bot) Start() error {
 
 	b.db.CreateLog("INFO", "Bot started", "")
 
+	go b.longPollUpdates()
 	go b.processUpdates()
 
 	return nil
 }
 
+// longPollUpdates uses the Telegram API to poll for updates
+func (b *Bot) longPollUpdates() {
+	var offset int = 0
+	
+	for {
+		select {
+		case <-b.stopChan:
+			return
+		default:
+			u := tgbotapi.NewUpdate(0)
+			u.Offset = offset
+			u.Timeout = 30
+			
+			updates, err := b.telegram.GetUpdates(u)
+			if err != nil {
+				log.Printf("⚠️  GetUpdates error: %v", err)
+				time.Sleep(3 * time.Second)
+				continue
+			}
+			
+			for _, update := range updates {
+				offset = update.UpdateID + 1
+				select {
+				case b.updateChan <- update:
+				case <-b.stopChan:
+					return
+				}
+			}
+		}
+	}
+}
+
+// processUpdates processes updates from the local channel
 func (b *Bot) processUpdates() {
 	for {
 		select {
@@ -168,6 +201,12 @@ func (b *Bot) IsAdmin(userID int64) bool {
 	return false
 }
 
+// sendTypingAction sends a typing indicator
+func (b *Bot) sendTypingAction(chatID int64) {
+	action := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
+	b.telegram.Send(action)
+}
+
 func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	if !b.IsAdmin(msg.From.ID) {
 		b.sendMessage(msg.Chat.ID, "⛔ Access denied. You are not authorized to use this bot.")
@@ -186,6 +225,9 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 
 // handleCommand handles slash commands
 func (b *Bot) handleCommand(msg *tgbotapi.Message) {
+	// Show typing indicator for better UX
+	b.sendTypingAction(msg.Chat.ID)
+	
 	command := msg.Command()
 
 	switch command {
@@ -356,6 +398,14 @@ func (b *Bot) sendMessage(chatID int64, text string) error {
 }
 
 func (b *Bot) sendStartMessage(msg *tgbotapi.Message) {
+	// Send welcome message first
+	welcome := tgbotapi.NewMessage(msg.Chat.ID, `🍕 *Pizza OTP Bot*
+
+✨ *Loading your dashboard...*`)
+	welcome.ParseMode = "Markdown"
+	b.telegram.Send(welcome)
+	
+	// Then show main menu
 	b.showMainMenu(msg.Chat.ID, 0)
 }
 
