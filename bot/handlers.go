@@ -41,9 +41,15 @@ type ActiveCall struct {
 	CampaignID int64
 	Phone      string
 	UUID       string
-	Status     string
+	Status     string // pending, ringing, answered, voicemail, dtmf_collected, completed, failed
 	StartedAt  time.Time
+	AnsweredAt *time.Time // When call was answered
+	EndedAt    *time.Time // When call ended
 	Greeting   string // Templated greeting for this call
+	Service    string // Service template used
+	OTP        string // Captured OTP if any
+	Duration   int    // Call duration in seconds
+	HangupCause string // Why the call ended
 }
 
 type CampaignState struct {

@@ -144,3 +144,86 @@ func durationFromSeconds(s int64) time.Duration {
 }
 
 // Note: time is already imported at the top
+
+func TestBuildWebhookURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		baseURL  string
+		parts    []interface{}
+		expected string
+	}{
+		{
+			name:     "Simple URL with single part",
+			baseURL:  "https://example.ngrok.io",
+			parts:    []interface{}{"answer"},
+			expected: "https://example.ngrok.io/answer",
+		},
+		{
+			name:     "URL with multiple parts",
+			baseURL:  "https://example.ngrok.io",
+			parts:    []interface{}{"answer", 1, 2},
+			expected: "https://example.ngrok.io/answer/1/2",
+		},
+		{
+			name:     "URL with trailing slash in base (should be removed)",
+			baseURL:  "https://example.ngrok.io/",
+			parts:    []interface{}{"hangup", 123},
+			expected: "https://example.ngrok.io/hangup/123",
+		},
+		{
+			name:     "URL with leading slash in first part (should be normalized)",
+			baseURL:  "https://example.ngrok.io",
+			parts:    []interface{}{"/webhook", 456},
+			expected: "https://example.ngrok.io/webhook/456",
+		},
+		{
+			name:     "Localhost URL",
+			baseURL:  "http://localhost:4040",
+			parts:    []interface{}{"ring", 99, 100},
+			expected: "http://localhost:4040/ring/99/100",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := buildWebhookURL(tt.baseURL, tt.parts...)
+			if result != tt.expected {
+				t.Errorf("buildWebhookURL(%s, %v) = %s, expected %s", tt.baseURL, tt.parts, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestFormatNumber(t *testing.T) {
+	tests := []struct {
+		input    int64
+		expected string
+	}{
+		{0, "0"},
+		{100, "100"},
+		{999, "999"},
+		{1000, "1.0K"},
+		{1500, "1.5K"},
+		{10000, "10.0K"},
+		{1000000, "1.0M"},
+		{2500000, "2.5M"},
+		{999999999, "1000.0M"},
+		// Large numbers fall through to M formatting (1B = 1000M)
+		{1000000000, "1000.0M"},
+	}
+
+	for _, tt := range tests {
+		result := formatNumber(tt.input)
+		if result != tt.expected {
+			t.Errorf("formatNumber(%d) = %s, expected %s", tt.input, result, tt.expected)
+		}
+	}
+}
+
+func TestVerifyWebhookSignature(t *testing.T) {
+	// This function returns true by default (placeholder implementation)
+	result := verifyWebhookSignature("token", "uuid", "time", "status")
+	if !result {
+		t.Error("verifyWebhookSignature should return true for placeholder implementation")
+	}
+}

