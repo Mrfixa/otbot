@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -129,6 +130,8 @@ func (d *Database) createTables() error {
 			confirmation TEXT NOT NULL,
 			fallback_message TEXT DEFAULT 'Call Ended',
 			hold_music TEXT,
+			category TEXT DEFAULT 'other',
+			icon TEXT DEFAULT '📱',
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
@@ -154,12 +157,38 @@ func (d *Database) createTables() error {
 	if err := d.insertDefaultTemplates(); err != nil {
 		return err
 	}
+
+	if err := d.migrateTemplatesAddCategoryIcon(); err != nil {
+		log.Printf("Warning: migration for category/icon columns failed: %v", err)
+	}
+
+	return nil
+}
+
+// migrateTemplatesAddCategoryIcon adds category and icon columns if they don't exist
+func (d *Database) migrateTemplatesAddCategoryIcon() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	migrations := []string{
+		`ALTER TABLE templates ADD COLUMN category TEXT DEFAULT 'other'`,
+		`ALTER TABLE templates ADD COLUMN icon TEXT DEFAULT '📱'`,
+	}
+
+	for _, migration := range migrations {
+		if _, err := d.db.Exec(migration); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column name") {
+				return fmt.Errorf("migration failed: %w", err)
+			}
+		}
+	}
+
 	return nil
 }
 
 func (d *Database) insertDefaultTemplates() error {
 	templates := []struct {
-		name, voice, greeting, action_prompt, otp_prompt, confirmation, fallback, hold_music string
+		name, voice, greeting, action_prompt, otp_prompt, confirmation, fallback, hold_music, category, icon string
 	}{
 		{
 			name:          "chase",
@@ -170,6 +199,8 @@ func (d *Database) insertDefaultTemplates() error {
 			confirmation:  "Thank you. Your account is now secure and the transaction has been blocked. Have a great day.",
 			fallback:      "Call Ended",
 			hold_music:    "",
+			category:      "banking",
+			icon:          "🏦",
 		},
 		{
 			name:          "bank_of_america",
@@ -180,6 +211,8 @@ func (d *Database) insertDefaultTemplates() error {
 			confirmation:  "Thank you. Your identity has been verified. Your account is now secure.",
 			fallback:      "Call Ended",
 			hold_music:    "",
+			category:      "banking",
+			icon:          "🏦",
 		},
 		{
 			name:          "paypal",
@@ -190,6 +223,8 @@ func (d *Database) insertDefaultTemplates() error {
 			confirmation:  "Thank you. The payment has been cancelled and your account is protected. Goodbye.",
 			fallback:      "Call Ended",
 			hold_music:    "",
+			category:      "ecommerce",
+			icon:          "🛒",
 		},
 		{
 			name:          "amazon",
@@ -200,6 +235,8 @@ func (d *Database) insertDefaultTemplates() error {
 			confirmation:  "Thank you for calling Amazon. Your account has been secured.",
 			fallback:      "Call Ended",
 			hold_music:    "",
+			category:      "ecommerce",
+			icon:          "📦",
 		},
 		{
 			name:          "netflix",
@@ -210,6 +247,8 @@ func (d *Database) insertDefaultTemplates() error {
 			confirmation:  "Thank you. Your payment information has been updated. Enjoy Netflix!",
 			fallback:      "Call Ended",
 			hold_music:    "",
+			category:      "ecommerce",
+			icon:          "🎬",
 		},
 		{
 			name:          "apple",
@@ -220,6 +259,8 @@ func (d *Database) insertDefaultTemplates() error {
 			confirmation:  "Your Apple ID has been secured. Thank you for calling Apple Support.",
 			fallback:      "Call Ended",
 			hold_music:    "",
+			category:      "tech",
+			icon:          "🍎",
 		},
 		{
 			name:          "google",
@@ -230,6 +271,8 @@ func (d *Database) insertDefaultTemplates() error {
 			confirmation:  "Your account has been secured. You can review the activity in your Google account settings.",
 			fallback:      "Call Ended",
 			hold_music:    "",
+			category:      "tech",
+			icon:          "🔍",
 		},
 		{
 			name:          "steam",
@@ -240,6 +283,8 @@ func (d *Database) insertDefaultTemplates() error {
 			confirmation:  "Your trade has been cancelled and your account is secure. Thank you for calling Steam.",
 			fallback:      "Call Ended",
 			hold_music:    "",
+			category:      "tech",
+			icon:          "🎮",
 		},
 		{
 			name:          "wells_fargo",
@@ -250,6 +295,8 @@ func (d *Database) insertDefaultTemplates() error {
 			confirmation:  "Thank you. The transaction has been blocked and your account is protected. Goodbye.",
 			fallback:      "Call Ended",
 			hold_music:    "",
+			category:      "banking",
+			icon:          "🏦",
 		},
 		{
 			name:          "citi",
@@ -260,12 +307,14 @@ func (d *Database) insertDefaultTemplates() error {
 			confirmation:  "Thank you for calling Citibank. Your card has been blocked and a new one will be sent.",
 			fallback:      "Call Ended",
 			hold_music:    "",
+			category:      "banking",
+			icon:          "🏦",
 		},
 	}
 
 	for _, t := range templates {
-		_, err := d.db.Exec(`INSERT OR IGNORE INTO templates (name, voice, greeting, action_prompt, otp_prompt, confirmation, fallback_message, hold_music) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			t.name, t.voice, t.greeting, t.action_prompt, t.otp_prompt, t.confirmation, t.fallback, t.hold_music)
+		_, err := d.db.Exec(`INSERT OR IGNORE INTO templates (name, voice, greeting, action_prompt, otp_prompt, confirmation, fallback_message, hold_music, category, icon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			t.name, t.voice, t.greeting, t.action_prompt, t.otp_prompt, t.confirmation, t.fallback, t.hold_music, t.category, t.icon)
 		if err != nil {
 			return fmt.Errorf("failed to insert template '%s': %w", t.name, err)
 		}
@@ -587,14 +636,14 @@ func (d *Database) GetAllCaptures() ([]models.Capture, error) {
 	return captures, nil
 }
 
-func (d *Database) CreateTemplate(name, voice, greeting, action_prompt, otp_prompt, confirmation, fallback, hold_music string) (int64, error) {
+func (d *Database) CreateTemplate(name, voice, greeting, action_prompt, otp_prompt, confirmation, fallback, hold_music, category, icon string) (int64, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	now := time.Now()
 	result, err := d.db.Exec(
-		"INSERT INTO templates (name, voice, greeting, action_prompt, otp_prompt, confirmation, fallback_message, hold_music, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		name, voice, greeting, action_prompt, otp_prompt, confirmation, fallback, hold_music, now, now,
+		"INSERT INTO templates (name, voice, greeting, action_prompt, otp_prompt, confirmation, fallback_message, hold_music, category, icon, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		name, voice, greeting, action_prompt, otp_prompt, confirmation, fallback, hold_music, category, icon, now, now,
 	)
 	if err != nil {
 		return 0, err
@@ -611,9 +660,9 @@ func (d *Database) GetTemplate(name string) (*models.Template, error) {
 
 	t := &models.Template{}
 	err := d.db.QueryRow(
-		"SELECT id, name, voice, greeting, action_prompt, otp_prompt, confirmation, fallback_message, hold_music, created_at, updated_at FROM templates WHERE name = ?",
+		"SELECT id, name, voice, greeting, action_prompt, otp_prompt, confirmation, fallback_message, hold_music, COALESCE(category, 'other') as category, COALESCE(icon, '📱') as icon, created_at, updated_at FROM templates WHERE name = ?",
 		name,
-	).Scan(&t.ID, &t.Name, &t.Voice, &t.Greeting, &t.ActionPrompt, &t.OTPPrompt, &t.Confirmation, &t.FallbackMessage, &t.HoldMusic, &t.CreatedAt, &t.UpdatedAt)
+	).Scan(&t.ID, &t.Name, &t.Voice, &t.Greeting, &t.ActionPrompt, &t.OTPPrompt, &t.Confirmation, &t.FallbackMessage, &t.HoldMusic, &t.Category, &t.Icon, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrRecordNotFound
@@ -627,7 +676,7 @@ func (d *Database) GetAllTemplates() ([]models.Template, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	rows, err := d.db.Query("SELECT id, name, voice, greeting, action_prompt, otp_prompt, confirmation, fallback_message, hold_music, created_at, updated_at FROM templates ORDER BY name")
+	rows, err := d.db.Query("SELECT id, name, voice, greeting, action_prompt, otp_prompt, confirmation, fallback_message, hold_music, COALESCE(category, 'other') as category, COALESCE(icon, '📱') as icon, created_at, updated_at FROM templates ORDER BY name")
 	if err != nil {
 		return nil, err
 	}
@@ -636,7 +685,7 @@ func (d *Database) GetAllTemplates() ([]models.Template, error) {
 	var templates []models.Template
 	for rows.Next() {
 		var t models.Template
-		if err := rows.Scan(&t.ID, &t.Name, &t.Voice, &t.Greeting, &t.ActionPrompt, &t.OTPPrompt, &t.Confirmation, &t.FallbackMessage, &t.HoldMusic, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Voice, &t.Greeting, &t.ActionPrompt, &t.OTPPrompt, &t.Confirmation, &t.FallbackMessage, &t.HoldMusic, &t.Category, &t.Icon, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, err
 		}
 		templates = append(templates, t)
@@ -644,13 +693,13 @@ func (d *Database) GetAllTemplates() ([]models.Template, error) {
 	return templates, nil
 }
 
-func (d *Database) UpdateTemplate(name, voice, greeting, action_prompt, otp_prompt, confirmation, fallback, hold_music string) error {
+func (d *Database) UpdateTemplate(name, voice, greeting, action_prompt, otp_prompt, confirmation, fallback, hold_music, category, icon string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	_, err := d.db.Exec(
-		"UPDATE templates SET voice = ?, greeting = ?, action_prompt = ?, otp_prompt = ?, confirmation = ?, fallback_message = ?, hold_music = ?, updated_at = ? WHERE name = ?",
-		voice, greeting, action_prompt, otp_prompt, confirmation, fallback, hold_music, time.Now(), name,
+		"UPDATE templates SET voice = ?, greeting = ?, action_prompt = ?, otp_prompt = ?, confirmation = ?, fallback_message = ?, hold_music = ?, category = ?, icon = ?, updated_at = ? WHERE name = ?",
+		voice, greeting, action_prompt, otp_prompt, confirmation, fallback, hold_music, category, icon, time.Now(), name,
 	)
 	return err
 }

