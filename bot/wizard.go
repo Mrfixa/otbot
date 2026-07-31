@@ -932,7 +932,7 @@ func (b *Bot) showCallConfirm(chatID int64, messageID int, phone, service string
 	cfg, _ := config.Get()
 	callerID := cfg.CallerID
 	if callerID == "" {
-		callerID = cfg.PlivoNumber
+		callerID = getProviderNumber(cfg)
 	}
 	callerInfo := cfg.CallerName
 	if callerInfo == "" {
@@ -1094,7 +1094,7 @@ func (b *Bot) showConfig(chatID int64, messageID int) {
 	if cfg.CallerID != "" {
 		text.WriteString(fmt.Sprintf("🎭 Caller ID: `%s`\n", cfg.CallerID))
 	} else {
-		text.WriteString("🎭 Caller ID: `Using Plivo Number`\n")
+		text.WriteString(fmt.Sprintf("🎭 Caller ID: `Using %s Number`\n", getProviderName(cfg)))
 	}
 	if cfg.CallerName != "" {
 		text.WriteString(fmt.Sprintf("🏷️ Display Name: `%s`\n", cfg.CallerName))
@@ -1246,7 +1246,7 @@ func (b *Bot) stopCampaignConfirm(callback *tgbotapi.CallbackQuery, campaignID i
 	b.mu.Unlock()
 
 	for _, uuid := range campaignCallUUIDs {
-		b.plivo.HangupCall(uuid)
+		b.provider.HangupCall(uuid)
 	}
 
 	b.answerCallback(callback.ID, "🛑 Campaign stopped", false)

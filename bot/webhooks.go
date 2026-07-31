@@ -21,7 +21,13 @@ func (b *Bot) registerWebhooks() {
 		return
 	}
 
-	webhookAuthToken = cfg.PlivoAuthToken
+	// Set auth token based on voice provider
+	switch cfg.VoiceProvider {
+	case "telnyx":
+		webhookAuthToken = cfg.TelnyxAPIKey
+	case "plivo":
+		webhookAuthToken = cfg.PlivoAuthToken
+	}
 
 	app := fiber.New()
 

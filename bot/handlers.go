@@ -24,7 +24,7 @@ type CallWizardState struct {
 
 type Bot struct {
 	telegram        *tgbotapi.BotAPI
-	plivo           *voice.PlivoClient
+	provider        voice.VoiceProvider // Supports Plivo, Twilio, or Telnyx
 	db              *db.Database
 	activeCalls     map[string]*ActiveCall
 	callQueue       chan CallJob
@@ -90,7 +90,27 @@ func NewBot(cfg *config.Config) (*Bot, error) {
 	}
 	b.db = database
 
-	b.plivo = voice.NewPlivoClient(cfg.PlivoAuthID, cfg.PlivoAuthToken, cfg.PlivoNumber)
+	// Initialize voice provider based on config
+	providerFactory := voice.NewProviderFactory()
+	var authID, authToken, number string
+	
+	switch cfg.VoiceProvider {
+	case "telnyx":
+		authID = cfg.TelnyxAPIKey
+		authToken = ""
+		number = cfg.TelnyxNumber
+	case "plivo":
+		authID = cfg.PlivoAuthID
+		authToken = cfg.PlivoAuthToken
+		number = cfg.PlivoNumber
+	default:
+		return nil, fmt.Errorf("unsupported voice provider: %s", cfg.VoiceProvider)
+	}
+	
+	b.provider, err = providerFactory.CreateProvider(cfg.VoiceProvider, authID, authToken, number)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize voice provider: %w", err)
+	}
 
 	b.telegram, err = tgbotapi.NewBotAPI(cfg.BotToken)
 	if err != nil {
@@ -556,4 +576,24 @@ func verifyWebhookSignature(authToken, callUUID, callTime, callStatus string) bo
 	// In production, this would compute MD5 and compare with X-Plivo-Signature header
 	_ = expectedSig // Placeholder for actual implementation
 	return true // Allow calls for now, signature verification can be enabled
+}
+
+// getProviderNumber returns the phone number for the configured voice provider
+func getProviderNumber(cfg *config.Config) string {
+	switch cfg.VoiceProvider {
+	case "telnyx":
+		return cfg.TelnyxNumber
+	default:
+		return cfg.PlivoNumber
+	}
+}
+
+// getProviderName returns the name of the configured voice provider
+func getProviderName(cfg *config.Config) string {
+	switch cfg.VoiceProvider {
+	case "telnyx":
+		return "Telnyx"
+	default:
+		return "Plivo"
+	}
 }

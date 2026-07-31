@@ -302,7 +302,7 @@ func (b *Bot) handleBatchCommand(msg *tgbotapi.Message) {
 	// Get caller info for display
 	callerID := cfg.CallerID
 	if callerID == "" {
-		callerID = cfg.PlivoNumber
+		callerID = getProviderNumber(cfg)
 	}
 	callerInfo := callerID
 	if cfg.CallerName != "" {
@@ -386,7 +386,7 @@ func (b *Bot) stopCampaign(msg *tgbotapi.Message, campaignID int64) {
 
 	b.mu.RLock()
 	for uuid := range b.activeCalls {
-		b.plivo.HangupCall(uuid)
+		b.provider.HangupCall(uuid)
 	}
 	b.mu.RUnlock()
 
@@ -486,7 +486,7 @@ func (b *Bot) handleSMSCommand(msg *tgbotapi.Message) {
 		return
 	}
 
-	resp, err := b.plivo.SendSMS(cfg.CallerID, phone, message)
+	resp, err := b.provider.SendSMS(cfg.CallerID, phone, message)
 	if err != nil {
 		b.sendMessage(msg.Chat.ID, fmt.Sprintf("❌ Failed to send SMS: %v", err))
 		return

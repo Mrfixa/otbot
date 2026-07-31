@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	version = "1.1.0"
+	version = "1.2.0"
 )
 
 func main() {
@@ -62,7 +62,16 @@ func main() {
 	
 	log.Printf("🍕 Pizza OTP Bot v%s is running!", version)
 	log.Printf("📱 Bot token: %s...", maskString(cfg.BotToken, 10))
-	log.Printf("📞 Plivo number: %s", cfg.PlivoNumber)
+	log.Printf("📞 Voice Provider: %s", cfg.VoiceProvider)
+	
+	// Log provider-specific number
+	switch cfg.VoiceProvider {
+	case "telnyx":
+		log.Printf("📞 Telnyx number: %s", cfg.TelnyxNumber)
+	case "plivo":
+		log.Printf("📞 Plivo number: %s (WARNING: spoofing disabled)", cfg.PlivoNumber)
+	}
+	
 	log.Printf("🗄️  Database: %s", cfg.DatabasePath)
 	log.Printf("⚡ Concurrency: %d", cfg.Concurrency)
 	log.Printf("🎭 Spoof CallerID: %s", cfg.CallerID)
